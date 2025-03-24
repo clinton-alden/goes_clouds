@@ -4,3 +4,5 @@
 *.csv
 
 goes_work/src
+!goes_work/src/gtsa
+!goes_work/src/goespy
