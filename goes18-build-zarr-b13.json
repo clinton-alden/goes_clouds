@@ -1,0 +1,1 @@
+{"dateRange": {"startDatetime": "2023-06-10T00:00:00Z", "endDatetime": "2023-06-10T00:59:00Z"}, "bounds": {"min_lon": -109, "min_lat": 37, "max_lon": -104, "max_lat": 41}, "satellite": "goes18", "product": "ABI-L1b-RadC", "bands": [13], "variables": ["Rad"], "downloadDirectory": "./", "outputFilepath": "./goes18-build-zarr-b13.zarr", "apiKey": "41d14aae7e761c0de3e8f99aa4fd24d9"}
