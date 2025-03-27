@@ -2,6 +2,8 @@
 *.png
 *.jpg
 *.csv
+*.gif
+*.json
 
 src/gtsa
 src/goespy
