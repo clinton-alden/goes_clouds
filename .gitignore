@@ -4,6 +4,9 @@
 *.csv
 *.gif
 *.json
+*.tif
+*.swp
+*.out
 
 src/gtsa
 src/goespy
