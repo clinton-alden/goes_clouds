@@ -9,5 +9,4 @@
 *.out
 *.gz
 
-src/gtsa
-src/goespy
+/home/cdalden/goes_work/geo2grid_v_1_2/
