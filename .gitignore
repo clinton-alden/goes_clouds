@@ -7,6 +7,7 @@
 *.tif
 *.swp
 *.out
+*.gz
 
 src/gtsa
 src/goespy
