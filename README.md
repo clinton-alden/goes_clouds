@@ -7,3 +7,10 @@
 `conda install -c conda-forge gcc_linux-64`
 `conda install -c conda-forge gxx_linux-64`
 3. `pip install goes_ortho`
+
+
+### Current to-do list
+1. Correct radiance to reflectivity for bands 2 and 5
+2. Correct radiance to brightness temperature for band 13
+3. Adjust RGB normalization based on the NOAA guidance from Matt Jochum
+4. Ortho rectify images using goes-ortho
