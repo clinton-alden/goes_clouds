@@ -14,3 +14,4 @@
 2. Correct radiance to brightness temperature for band 13
 3. Adjust RGB normalization based on the NOAA guidance from Matt Jochum
 4. Ortho rectify images using goes-ortho
+5. Combine 3 RGB bands into one zarr file
