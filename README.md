@@ -10,8 +10,10 @@
 
 
 ### Current to-do list
-1. Correct radiance to reflectivity for bands 2 and 5
-2. Correct radiance to brightness temperature for band 13
-3. Adjust RGB normalization based on the NOAA guidance from Matt Jochum
-4. Ortho rectify images using goes-ortho
-5. Combine 3 RGB bands into one zarr file
+1. [X] Need to convert from x and y to lat lon
+2. [X] Resample to match resolutions
+3. [ ] Correct radiance to reflectivity for bands 2 and 5
+4. [ ] Correct radiance to brightness temperature for band 13
+5. [ ] Adjust RGB normalization based on the NOAA guidance from Matt Jochum
+6. [ ] Ortho rectify images using goes-ortho
+7. [ ] Combine 3 RGB bands into one zarr file 
