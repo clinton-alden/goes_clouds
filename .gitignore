@@ -9,5 +9,4 @@
 *.out
 *.gz
 *.mp4
-
-geo2grid_v_1_2/
+*.pyc
