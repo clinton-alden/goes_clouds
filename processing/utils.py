@@ -17,7 +17,7 @@ def goes_nc_to_zarr(in_dir, out_dir, out_name):
     """
     
  
-# Directory containing the NetCDF files
+    # Directory containing the NetCDF files
     
     # Recursively list all NetCDF files in the directory and subdirectories
     nc_files = []
@@ -37,7 +37,7 @@ def goes_nc_to_zarr(in_dir, out_dir, out_name):
     out_name = out_name
     combined_ds.to_zarr(out_dir+out_name)
 
-    return print(f"Zarr file saved to {out_dir+out_name}")
+    return print("Zarr file saved to " + out_dir + out_name)
 
 
 #########################################################################################
@@ -138,10 +138,10 @@ def radiance_to_brightness_temp(ds, band):
     wavelength = channel_dict[band] # cm
     wavenumber = 1 / wavelength     # cm^-1
 
-    radiance = ds[f'Rad_C{band}']
+    radiance = ds['Rad_C' + band]
 
     # Calculate brightness temperature
-    ds[f'btemp_C{band}'] = c2 * wavenumber / np.log((c1 * wavenumber**3) / radiance + 1)
+    ds['btemp_C' + band] = c2 * wavenumber / np.log((c1 * wavenumber**3) / radiance + 1)
 
     return ds
 
@@ -159,11 +159,11 @@ def goes_rad_to_rgb(path, date):
     """
 
     # Load the GOES-16 ABI data
-    file = f'goes16_C02_colorado_{date}.zarr'
+    file = 'goes16_C02_colorado_' + date + '.zarr'
     ds_C02 = xr.open_dataset(path+'channel02/'+file)
-    file = f'goes16_C05_colorado_{date}.zarr'
+    file = 'goes16_C05_colorado_' + date + '.zarr'
     ds_C05 = xr.open_dataset(path+'channel05/'+file)
-    file = f'goes16_C13_colorado_{date}.zarr'
+    file = 'goes16_C13_colorado_' + date + '.zarr'
     ds_C13 = xr.open_dataset(path+'channel13/'+file)
 
     # convert to lat and lon from x and y coordinates
@@ -210,7 +210,7 @@ def goes_rad_to_rgb(path, date):
     combined_ds['blue'] = goes_norm(combined_ds['refl_C05'], 0.01, 0.59, clip=True)
     combined_ds['red'] = goes_norm(combined_ds['btemp_C13'], 219.65, 280.65, clip=True)
 
-    combined_ds.drop_vars(['Rad_C02', 'Rad_C05', 'Rad_C13'], inplace=True)
+    combined_ds = combined_ds.drop_vars(['Rad_C02', 'Rad_C05', 'Rad_C13'])
 
     return combined_ds
 
