@@ -2,6 +2,8 @@
 import xarray as xr
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 def goes_nc_to_zarr(in_dir, out_dir, out_name): 
     """
@@ -219,3 +221,64 @@ def goes_rad_to_rgb(path, date):
 # Making GIF loops
 #########################################################################################
 
+# Function to generate the time string based on date and time of day
+def generate_time(date, time_of_day):
+    # Convert date string to datetime object
+    date_obj = datetime.strptime(date, '%Y%m%d')
+    # Format the date part
+    date_str = date_obj.strftime('%Y-%m-%d')
+    # Combine date and time of day
+    time_str = date_str + 'T' + time_of_day
+    return time_str
+
+def plot_rgb_image(ds, date, time_of_day, gif=False):
+    """""
+    Plot RGB image from xarray dataset and save as PNG.
+    Parameters:
+    ds (xarray.Dataset): The dataset containing the RGB channels.
+    date (str): The date in 'YYYYMMDD' format.
+    time_of_day (str): The time of day in 'HH:MM:SS' format. 
+    gif (bool): If making a gif, `gif=True` will close the fig without displaying.
+    """
+
+    # Extract the values as NumPy arrays
+    red = ds['red'].values
+    green = ds['green'].values
+    blue = ds['blue'].values
+
+    # Find the minimum shape among the arrays
+    min_shape = np.min([red.shape, green.shape, blue.shape], axis=0)
+
+    # Resize the arrays to the minimum shape
+    red_resized = red[:min_shape[0], :min_shape[1]]
+    green_resized = green[:min_shape[0], :min_shape[1]]
+    blue_resized = blue[:min_shape[0], :min_shape[1]]
+
+    # Ensure the arrays have the same dimensions
+    assert red_resized.shape == green_resized.shape == blue_resized.shape, "Arrays must have the same shape"
+
+    # Stack the arrays along the last dimension to create an RGB image
+    rgb_image = np.stack([red_resized, green_resized, blue_resized], axis=-1)
+
+    # Extract longitude and latitude values
+    lon = ds['x'].values
+    lat = ds['y'].values
+
+    # Plot the RGB image using matplotlib's imshow
+    rgb_plot = plt.imshow(rgb_image, extent=[lon.min(), lon.max(), lat.min(), lat.max()])
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    plt.title('GOES Day Cloud Phase RGB Composite - {} {}'.format(date, time_of_day) + ' UTC')
+    plt.axis('on')  # Show the axis
+
+    # Save the plot as a PNG file
+    filename = './plots/goes_RGB_{}_{}.png'.format(date, time_of_day)
+    plt.savefig(filename)
+
+    
+    if gif:
+        plt.close()
+        return filename
+    else:
+        return rgb_plot
+        plt.show()
