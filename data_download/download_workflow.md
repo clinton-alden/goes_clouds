@@ -9,4 +9,5 @@
 
 Current download status:
 Need Channels 2/5/13 for W WA for 13 July - 30 Sep 2022
-downloading... all channels for september 2022
+downloading... ERROR
+something broke with the downloading scripts, I only have channel 13 for July and August
