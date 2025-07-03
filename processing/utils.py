@@ -5,6 +5,10 @@ import os
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+#########################################################################################
+# Processing to netcdfs to zarr files for each day
+#########################################################################################
+
 def goes_nc_to_zarr(in_dir, out_dir, out_name): 
     """
     Convert multiple NetCDF files to a single Zarr file.
@@ -12,6 +16,8 @@ def goes_nc_to_zarr(in_dir, out_dir, out_name):
     Parameters:
     in_dir (str): Directory containing the NetCDF files.
     out_dir (str): Output directory for the Zarr file.
+                    - should be ./channel02 or ./channel05 or ./channel13, etc for 
+                    following functions to work correctly
     out_name (str): Name of the output Zarr file.
     
     Returns:
@@ -216,6 +222,44 @@ def goes_rad_to_rgb(path, date):
 
     return combined_ds
 
+
+#########################################################################################
+# One Stop Shop for processing
+#########################################################################################
+
+def goes_zarr_to_rgb(in_dir, out_dir, date, goes, gif=False):
+    """
+    Convert GOES ABI NetCDF files to a single Zarr file and then create an RGB composite.
+
+    Parameters:
+    in_dir (str): Directory containing the NetCDF files.
+    out_dir (str): Output directory for the Zarr file.
+    date (str): Date in 'YYYYMMDD' format.
+    goes (str): GOES satellite identifier (e.g., 'goes16').
+    gif (bool): If True, will return the filename for GIF creation instead of displaying the plot.
+
+    Returns:
+    xarray.Dataset: Dataset containing the RGB composite.
+    """
+    
+    # Convert NetCDF files to Zarr
+    goes_nc_to_zarr(in_dir, out_dir, 'goes16_' + date + '.zarr')
+
+    # Load the Zarr file
+    zarr_file = out_dir + 'goes16_' + date + '.zarr'
+    ds = goes_rad_to_rgb(zarr_file, date)
+
+    # Save final ds as netcdf for 1 day with the 3 processed and normalized RGB channels
+    out_name = goes + '_RGB_' + date + '.nc'
+
+    # Generate time string
+    time_of_day = '12:00:00'  # Example time of day
+    time_str = generate_time(date, time_of_day)
+
+    # Plot RGB image
+    rgb_plot = plot_rgb_image(ds, date, time_of_day, gif=gif)
+
+    return rgb_plot
 
 #########################################################################################
 # Making GIF loops
