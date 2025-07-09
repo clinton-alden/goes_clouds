@@ -2,50 +2,110 @@
 import xarray as xr
 import numpy as np
 import os
+import gc
 import matplotlib.pyplot as plt
 from datetime import datetime
+import warnings
+
+warnings.filterwarnings("ignore")
 
 #########################################################################################
 # Processing to netcdfs to zarr files for each day
 #########################################################################################
 
-def goes_nc_to_zarr(in_dir, out_dir, out_name): 
+def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year, 
+                    location='washington', goes_model='goes17', surprise=False):
     """
-    Convert multiple NetCDF files to a single Zarr file.
-    
-    Parameters:
-    in_dir (str): Directory containing the NetCDF files.
-    out_dir (str): Output directory for the Zarr file.
-                    - should be ./channel02 or ./channel05 or ./channel13, etc for 
-                    following functions to work correctly
-    out_name (str): Name of the output Zarr file.
-    
-    Returns:
-    None
-    """
-    
- 
-    # Directory containing the NetCDF files
-    
-    # Recursively list all NetCDF files in the directory and subdirectories
-    nc_files = []
-    for root, dirs, files in os.walk(in_dir):
-        for file in files:
-            # print(file)
-            if file.endswith('.nc'):
-                nc_files.append(os.path.join(root, file))
+    Convert multiple NetCDF files from a directory to a single Zarr file.
+    Parameters
+    ----------
+    in_dir : str
+        Input directory containing NetCDF files.
+    channels : list
+        List of channels to process (e.g., ['C13', 'C02', 'C05']).
+    startday : int
+        Starting day of the month for processing.
+    endday : int
+        Ending day of the month for processing.
+    month : int
+        Month of the data to process.
+    year : int
+        Year of the data to process.
+    location : str
+        Location identifier (e.g., 'washington').
+    goes_model : str
+        GOES satellite model (e.g., 'goes17').
+    surprise : bool
+        If True, print fun messages during processing.
 
-    # Open multiple NetCDF files as a list of datasets
-    datasets = [xr.open_dataset(f) for f in nc_files]
+    Example usage:
+    >>> goes_nc_to_zarr('/storage/cdalden/goes/washington/', ['C13', 'C02', 'C05'], 
+                        1, 2, 8, 2022, 'washington', 'goes17')
+    """ 
 
-    # Concatenate datasets along the 't' coordinate
-    combined_ds = xr.concat(datasets, dim='t')
+    # if no date range is specified, run for full month
+    if not startday:
+        startday = 1
+    if not endday:
+        endday = 31
 
-    # Save the combined dataset to a Zarr file
-    out_name = out_name
-    combined_ds.to_zarr(out_dir+out_name)
+    # this is adds 0 to single digit days of the months
+    # GOES sub dirs don't have it but it is needed for the rest of my processing
+    for day in range(startday,endday+1):
+        day_of_month = str(day)
+        if day<10:
+            out_day_of_month = '0' + day_of_month
+        else:
+            out_day_of_month = day_of_month
+        print(f'Starting {str(month)}/{day_of_month}')
+        
+        # Directory containing the NetCDF files
+        nc_dir = in_dir + f'{goes_model}/{year}/{month}/{day_of_month}/'
+        # Ensure the directory exists
+        print(f'Looking for NetCDF files in {nc_dir}')
 
-    return print("Zarr file saved to " + out_dir + out_name)
+        # Check if the directory exists
+        if not os.path.exists(nc_dir):
+            print(f'Directory {nc_dir} does not exist. Skipping...')
+            continue
+
+        # count number of files in nc_dir
+        num_files = len([f for root, dirs, files in os.walk(nc_dir) for f in files if f.endswith('.nc')])
+        expected_num_files = len(channels)*288  # 288 files per channel per day
+        if num_files != expected_num_files:
+            print(f'WARNING: {num_files} files found in {nc_dir}, expected {expected_num_files}. Skipping...')
+            continue
+
+        # loop through all needed channels
+        for channel in channels:
+            out_name = f'{str(goes_model)}_{channel}_{location}_{str(year)}0{str(month)}{out_day_of_month}.zarr'
+            print(f'Processing {out_name}...')
+            
+            # Recursively list all NetCDF files in the directory and subdirectories
+            nc_files = []
+            for root, dirs, files in os.walk(nc_dir):
+                for file in files:
+                    # print(file)
+                    if file.endswith('.nc') and channel in file:
+                        nc_files.append(os.path.join(root, file))
+
+            # Open multiple NetCDF files as a list of datasets
+            datasets = [xr.open_dataset(f) for f in nc_files]
+
+            # Concatenate datasets along the 't' coordinate
+            combined_ds = xr.concat(datasets, dim='t')
+
+            # Save the combined dataset to a Zarr file
+            out_name = out_name
+            combined_ds.to_zarr(in_dir+f'{goes_model}/{channel}/'+out_name)
+
+            # Force garbage collection to free memory
+            gc.collect()
+            if surprise:
+                print('Beep beep, here comes the garbage truck! 🚛')
+            print('Finished')
+            if surprise:
+                print('🛰️')
 
 
 #########################################################################################
@@ -94,9 +154,13 @@ def calculate_degrees(file_id):
     return abi_lat, abi_lon
 
 # From goes2go - annoying warnings with import so copying here manually
-def goes_norm(value, lower_limit, upper_limit, clip=True):
+def goes_norm(value, lower_limit, upper_limit, clip=True, bright_temp=False):
     """
     Normalize values between an upper and lower limit between 0 and 1.
+
+    # Brightness temperatures need to be inverted so 
+    #   lowest vals are warm temps (blue and green when plotted)
+    #   and highest vals are cold temps (red when plotted)
 
     Normalize between a lower and upper limit. In other words, it
     converts your number to a value in the range between 0 and 1.
@@ -126,6 +190,8 @@ def goes_norm(value, lower_limit, upper_limit, clip=True):
     norm = (value - lower_limit) / (upper_limit - lower_limit)
     if clip:
         norm = np.clip(norm, 0, 1)
+    if bright_temp:
+        norm = 1-norm
     return norm
 
 def radiance_to_brightness_temp(ds, band):
@@ -153,26 +219,28 @@ def radiance_to_brightness_temp(ds, band):
 
     return ds
 
-def goes_rad_to_rgb(path, date):
+def goes_rad_to_rgb(path, date, goes, location):
     """
-    Downscale GOES-16 bands C02, C05, and C13 to the same grid and interpolate to match the target dataset.
+    Downscale GOES bands C02, C05, and C13 to the same grid and interpolate to match the target dataset.
     The function also calculates reflectivity and brightness temperature for the specified bands.
 
     Parameters:
     path (str): The path to the directory containing the GOES-16 data files.
     date (str): The date string in the format 'YYYYMMDD'.
+    goes (str): The GOES satellite identifier (e.g., 'goes16').
+    location (str): The location identifier (e.g., 'colorado', 'washington').
 
     Returns:
     xarray.Dataset: A dataset containing the downscaled reflectivity and brightness temperature.
     """
 
     # Load the GOES-16 ABI data
-    file = 'goes16_C02_colorado_' + date + '.zarr'
-    ds_C02 = xr.open_dataset(path+'channel02/'+file)
-    file = 'goes16_C05_colorado_' + date + '.zarr'
-    ds_C05 = xr.open_dataset(path+'channel05/'+file)
-    file = 'goes16_C13_colorado_' + date + '.zarr'
-    ds_C13 = xr.open_dataset(path+'channel13/'+file)
+    C02_file = f'C02/{goes}_C02_{location}_' + date + '.zarr'
+    ds_C02 = xr.open_dataset(path+C02_file)
+    C05_file = f'C05/{goes}_C05_{location}_' + date + '.zarr'
+    ds_C05 = xr.open_dataset(path+C05_file)
+    C13_file = f'C13/{goes}_C13_{location}_' + date + '.zarr'
+    ds_C13 = xr.open_dataset(path+C13_file)
 
     # convert to lat and lon from x and y coordinates
     lat_C02, lon_C02 = calculate_degrees(ds_C02)
@@ -214,13 +282,18 @@ def goes_rad_to_rgb(path, date):
     # Convert radiance to brightness temperature
     radiance_to_brightness_temp(combined_ds, '13')
 
-    combined_ds['green'] = goes_norm(combined_ds['refl_C02'], 0, 0.78, clip=True)
-    combined_ds['blue'] = goes_norm(combined_ds['refl_C05'], 0.01, 0.59, clip=True)
-    combined_ds['red'] = goes_norm(combined_ds['btemp_C13'], 219.65, 280.65, clip=True)
+    combined_ds['green'] = goes_norm(combined_ds['refl_C02'], 
+                                     0, 0.78, clip=True)
+    combined_ds['blue'] = goes_norm(combined_ds['refl_C05'], 
+                                    0.01, 0.59, clip=True)
+    combined_ds['red'] = goes_norm(combined_ds['btemp_C13'], 
+                                   219.65, 280.65, clip=True, bright_temp=True)
 
     combined_ds = combined_ds.drop_vars(['Rad_C02', 'Rad_C05', 'Rad_C13'])
-
-    return combined_ds
+    
+    out_name = f'{goes}_C02_C05_C13_rgb_{location}_{date}.nc'
+    combined_ds.to_netcdf(path + f'rgb_composite/{out_name}', 
+                          mode='w', format='NETCDF4')
 
 
 #########################################################################################
@@ -228,6 +301,7 @@ def goes_rad_to_rgb(path, date):
 #########################################################################################
 
 def goes_zarr_to_rgb(in_dir, out_dir, date, goes, gif=False):
+    # ***********BROKEN***********
     """
     Convert GOES ABI NetCDF files to a single Zarr file and then create an RGB composite.
 
