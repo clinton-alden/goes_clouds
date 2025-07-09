@@ -154,7 +154,7 @@ def calculate_degrees(file_id):
     return abi_lat, abi_lon
 
 # From goes2go - annoying warnings with import so copying here manually
-def goes_norm(value, lower_limit, upper_limit, clip=True, bright_temp=False):
+def goes_norm(value, lower_limit, upper_limit, clip=True, invert_norm=False):
     """
     Normalize values between an upper and lower limit between 0 and 1.
 
@@ -190,7 +190,7 @@ def goes_norm(value, lower_limit, upper_limit, clip=True, bright_temp=False):
     norm = (value - lower_limit) / (upper_limit - lower_limit)
     if clip:
         norm = np.clip(norm, 0, 1)
-    if bright_temp:
+    if invert_norm:
         norm = 1-norm
     return norm
 
@@ -286,8 +286,13 @@ def goes_rad_to_rgb(path, date, goes, location):
                                      0, 0.78, clip=True)
     combined_ds['blue'] = goes_norm(combined_ds['refl_C05'], 
                                     0.01, 0.59, clip=True)
+    # VERY IMPORTANT 
+    # The RGB Day Cloud Phase Distinction GOES product 
+    # anchors the warm temps to 0 and cold temps to 1
+    # so that the coldest temps display red and warmest temps display blue (counterintuitve)
+    # therefore: we have to invert the nomalized data (bright_temp=True)
     combined_ds['red'] = goes_norm(combined_ds['btemp_C13'], 
-                                   219.65, 280.65, clip=True, bright_temp=True)
+                                   219.65, 280.65, clip=True, invert_norm=True)
 
     combined_ds = combined_ds.drop_vars(['Rad_C02', 'Rad_C05', 'Rad_C13'])
     
