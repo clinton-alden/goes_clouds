@@ -4,8 +4,9 @@ import numpy as np
 import os
 import gc
 import matplotlib.pyplot as plt
-from datetime import datetime
+from datetime import datetime, timedelta
 import warnings
+import imageio
 
 warnings.filterwarnings("ignore")
 
@@ -360,8 +361,8 @@ def plot_rgb_image(ds, date, time_of_day, gif=False):
     Parameters:
     ds (xarray.Dataset): The dataset containing the RGB channels.
     date (str): The date in 'YYYYMMDD' format.
-    time_of_day (str): The time of day in 'HH:MM:SS' format. 
-    gif (bool): If making a gif, `gif=True` will close the fig without displaying.
+    time_of_day (str): The time of day in 'HH:MM:SS' format.
+    gif (bool): Whether to save the plot as a GIF.
     """
 
     # Extract the values as NumPy arrays
@@ -391,11 +392,11 @@ def plot_rgb_image(ds, date, time_of_day, gif=False):
     rgb_plot = plt.imshow(rgb_image, extent=[lon.min(), lon.max(), lat.min(), lat.max()])
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
-    plt.title('GOES Day Cloud Phase RGB Composite - {} {}'.format(date, time_of_day) + ' UTC')
+    plt.title('GOES Day Cloud Phase RGB Composite - ' + date + ' ' + time_of_day + ' UTC')
     plt.axis('on')  # Show the axis
 
     # Save the plot as a PNG file
-    filename = './plots/goes_RGB_{}_{}.png'.format(date, time_of_day)
+    filename = f'./plots/goes_RGB_{date}_{time_of_day}.png'
     plt.savefig(filename)
 
     
@@ -405,3 +406,91 @@ def plot_rgb_image(ds, date, time_of_day, gif=False):
     else:
         return rgb_plot
         plt.show()
+
+
+def create_gif_from_pngs(png_dir, output_gif):
+    # Get a list of all PNG files in the directory
+    png_files = sorted([f for f in os.listdir(png_dir) if f.endswith('.png')])
+
+    # Read each image and append it to the images list
+    images = []
+    for png_file in png_files:
+        image_path = os.path.join(png_dir, png_file)
+        images.append(imageio.imread(image_path))
+
+    # Create and save the GIF
+    imageio.mimsave(output_gif, images, duration=0.1)  # Adjust the duration as needed
+
+def cloud_mask(ds):
+    """
+    create a "cloud" mask where the green channel is greater than 0.5 and blue channel 
+    is less than 0.2 set these pixels to red=0, blue=1, green=1
+
+    can be modified for future processing and for different cloud types
+
+    """
+
+    green = ds['green'].values
+    blue = ds['blue'].values
+    red = ds['red'].values
+    mask = (green > 0.4) & (blue > 0.4) & (red > 0.4)
+    ds_masked = ds.copy()
+    ds_masked['red'] = xr.where(mask, 0, ds['red'])
+    ds_masked['green'] = xr.where(mask, 1, ds['green'])
+    ds_masked['blue'] = xr.where(mask, 1, ds['blue'])
+
+    return ds_masked
+
+def make_gif(ds, date, start_time, end_time, mask=False):
+    """
+    Create a GIF from GOES data for a specific date and time range.
+
+    Parameters:
+    ds(xarray.Dataset): The dataset containing the GOES data.
+    date (str): The date in 'YYYYMMDD' format.
+    start_time (str): The start time in 'HHMM' format.
+    end_time (str): The end time in 'HHMM' format.
+    mask (bool): Whether to apply a cloud mask.
+    """
+    # input_file = f'/storage/cdalden/goes/goes16/RGB_composite/goes16_C02_C05_C13_RGB_colorado_{date}.nc'
+    # ds = xr.open_dataset(input_file)
+
+    if mask:
+        print('Applying cloud mask...')
+        ds = cloud_mask(ds)
+
+
+    start_time = datetime.strptime(f"{date}T{start_time}00", '%Y%m%dT%H%M%S')
+    end_time = datetime.strptime(f"{date}T{end_time}00", '%Y%m%dT%H%M%S')
+
+    ds = ds.sortby('t')
+
+    # List to store the filenames of the generated plots
+    filenames = []
+
+    # Loop through every 10-minute chunk
+    current_time = start_time
+    while current_time <= end_time:
+        time_str = current_time.strftime('%Y-%m-%dT%H:%M:%S')
+        ds_i = ds.sel(t=time_str, method='nearest')
+        hour_of_day = current_time.strftime('%H:%M')
+        filename = plot_rgb_image(ds_i, date, hour_of_day, gif=True)
+        filenames.append(filename)
+        current_time += timedelta(minutes=10)
+        print(f'Generated RGB image for {time_str}')
+
+    # Create the GIF
+    start_time_out = start_time.strftime('%H%M')
+    end_time_out =  end_time.strftime('%H%M')
+    if mask:
+        output_gif = f'./gifs/masked_goes_RGB_{date}_{start_time_out}_{end_time_out}.gif'
+    else:
+        output_gif = f'./gifs/goes_RGB_{date}_{start_time_out}_{end_time_out}.gif'
+    with imageio.get_writer(output_gif, mode='I', duration=0.5) as writer:
+        for filename in filenames:
+            image = imageio.imread(filename)
+            writer.append_data(image)
+
+    # Clean up the temporary files
+    for filename in filenames:
+        os.remove(filename)
