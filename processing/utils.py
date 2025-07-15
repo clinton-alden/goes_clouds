@@ -73,9 +73,12 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
         # count number of files in nc_dir
         num_files = len([f for root, dirs, files in os.walk(nc_dir) for f in files if f.endswith('.nc')])
         expected_num_files = len(channels)*288  # 288 files per channel per day
+        # if num_files != expected_num_files:
+        #     print(f'WARNING: {num_files} files found in {nc_dir}, expected {expected_num_files}. Skipping...')
+        #     continue
         if num_files != expected_num_files:
-            print(f'WARNING: {num_files} files found in {nc_dir}, expected {expected_num_files}. Skipping...')
-            continue
+            print(f'WARNING: {num_files} files found in {nc_dir}, 
+                  expected {expected_num_files}. Not skipping, just a warning')
 
         # loop through all needed channels
         for channel in channels:
