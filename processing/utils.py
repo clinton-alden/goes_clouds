@@ -77,8 +77,7 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
         #     print(f'WARNING: {num_files} files found in {nc_dir}, expected {expected_num_files}. Skipping...')
         #     continue
         if num_files != expected_num_files:
-            print(f'WARNING: {num_files} files found in {nc_dir}, 
-                  expected {expected_num_files}. Not skipping, just a warning')
+            print(f'WARNING: {num_files} files found in {nc_dir}, expected {expected_num_files}. Not skipping, just a warning')
 
         # loop through all needed channels
         for channel in channels:
@@ -247,12 +246,13 @@ def goes_rad_to_rgb(path, date, goes, location):
     ds_C13 = xr.open_dataset(path+C13_file)
 
     # convert to lat and lon from x and y coordinates
-    lat_C02, lon_C02 = calculate_degrees(ds_C02)
-    lat_C05, lon_C05 = calculate_degrees(ds_C05)
-    lat_C13, lon_C13 = calculate_degrees(ds_C13)
-    ds_C02 = ds_C02.assign_coords(y=("y", lat_C02[:,0]), x=("x", lon_C02[0,:]))
-    ds_C05 = ds_C05.assign_coords(y=("y", lat_C05[:,0]), x=("x", lon_C05[0,:]))
-    ds_C13 = ds_C13.assign_coords(y=("y", lat_C13[:,0]), x=("x", lon_C13[0,:]))
+    # removed - Stevens code already does this
+    # lat_C02, lon_C02 = calculate_degrees(ds_C02)
+    # lat_C05, lon_C05 = calculate_degrees(ds_C05)
+    # lat_C13, lon_C13 = calculate_degrees(ds_C13)
+    # ds_C02 = ds_C02.assign_coords(y=("y", lat_C02[:,0]), x=("x", lon_C02[0,:]))
+    # ds_C05 = ds_C05.assign_coords(y=("y", lat_C05[:,0]), x=("x", lon_C05[0,:]))
+    # ds_C13 = ds_C13.assign_coords(y=("y", lat_C13[:,0]), x=("x", lon_C13[0,:]))
 
     # Extract time coordinates from ds_C02
     time_C02 = ds_C02['t']
@@ -260,45 +260,46 @@ def goes_rad_to_rgb(path, date, goes, location):
     ds_C05 = ds_C05.assign_coords(t=time_C02)
 
     # Ensure the coordinate ranges overlap
-    target_lat = ds_C02['y']
-    target_lon = ds_C02['x']
+    target_lat = ds_C02['latitude']
+    target_lon = ds_C02['longitude']
 
     # Align the coordinates of ds_C13 with ds_C02
     ds_C13_aligned = ds_C13.reindex_like(ds_C02, method='nearest')
     ds_C05_aligned = ds_C05.reindex_like(ds_C02, method='nearest')
 
     # Interpolate the source dataset to the target dataset's grid using a specified method
-    ds_C13_resampled = ds_C13_aligned.interp(y=target_lat, x=target_lon, method='linear')
-    ds_C05_resampled = ds_C05_aligned.interp(y=target_lat, x=target_lon, method='linear')
+    ds_C13_resampled = ds_C13_aligned.interp(latitude=target_lat, longitude=target_lon, method='linear')
+    ds_C05_resampled = ds_C05_aligned.interp(latitude=target_lat, longitude=target_lon, method='linear')
     # If there are still NaNs, try filling them with a method like nearest neighbor
-    ds_C13_resampled_filled = ds_C13_resampled.fillna(ds_C13_aligned.interp(y=target_lat, x=target_lon, method='nearest'))
-    ds_C05_resampled_filled = ds_C05_resampled.fillna(ds_C05_aligned.interp(y=target_lat, x=target_lon, method='nearest'))
+    ds_C13_resampled_filled = ds_C13_resampled.fillna(ds_C13_aligned.interp(latitude=target_lat, longitude=target_lon, method='nearest'))
+    ds_C05_resampled_filled = ds_C05_resampled.fillna(ds_C05_aligned.interp(latitude=target_lat, longitude=target_lon, method='nearest'))
 
     # Create a new dataset with the two Rad variables
     combined_ds = xr.Dataset(
-        {'Rad_C13': ds_C13_resampled_filled['Rad'], 'Rad_C02': ds_C02['Rad'], 'Rad_C05': ds_C05_resampled_filled['Rad']},
-        coords={'y': target_lat, 'x': target_lon, 't': ds_C02['t']})
+        {'tb_C13': ds_C13_resampled_filled['tb'], 'ref_C02': ds_C02['ref'], 'ref_C05': ds_C05_resampled_filled['ref']},
+        coords={'latitude': target_lat, 'longitude': target_lon, 't': ds_C02['t']})
     
+    # following 2 blocks unnesessary, steven's code already does this
     # reflectivity = kappa factor * radiance
-    combined_ds['refl_C02'] = ds_C02['kappa0'] * combined_ds['Rad_C02']
-    combined_ds['refl_C05'] = ds_C05['kappa0'] * combined_ds['Rad_C05']
+    # combined_ds['refl_C02'] = ds_C02['kappa0'] * combined_ds['Rad_C02']
+    # combined_ds['refl_C05'] = ds_C05['kappa0'] * combined_ds['Rad_C05']
 
     # Convert radiance to brightness temperature
-    radiance_to_brightness_temp(combined_ds, '13')
+    # radiance_to_brightness_temp(combined_ds, '13')
 
-    combined_ds['green'] = goes_norm(combined_ds['refl_C02'], 
+    combined_ds['green'] = goes_norm(combined_ds['ref_C02'], 
                                      0, 0.78, clip=True)
-    combined_ds['blue'] = goes_norm(combined_ds['refl_C05'], 
+    combined_ds['blue'] = goes_norm(combined_ds['ref_C05'], 
                                     0.01, 0.59, clip=True)
     # VERY IMPORTANT 
     # The RGB Day Cloud Phase Distinction GOES product 
     # anchors the warm temps to 0 and cold temps to 1
     # so that the coldest temps display red and warmest temps display blue (counterintuitve)
     # therefore: we have to invert the nomalized data (bright_temp=True)
-    combined_ds['red'] = goes_norm(combined_ds['btemp_C13'], 
+    combined_ds['red'] = goes_norm(combined_ds['tb_C13'], 
                                    219.65, 280.65, clip=True, invert_norm=True)
 
-    combined_ds = combined_ds.drop_vars(['Rad_C02', 'Rad_C05', 'Rad_C13'])
+    combined_ds = combined_ds.drop_vars(['ref_C02', 'ref_C05', 'tb_C13'])
     
     out_name = f'{goes}_C02_C05_C13_rgb_{location}_{date}.nc'
     combined_ds.to_netcdf(path + f'rgb_composite/{out_name}', 

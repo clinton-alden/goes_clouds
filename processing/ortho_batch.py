@@ -17,6 +17,9 @@ def process_files(root_dir):
                 bounds = (-124, 48, -121, 49)
                 api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
 
+            if 'ortho' in netcdf_path:
+                print(f"File {goes_image_path} already ortho'd, skipping.")
+            else:
                 orthorectify_modded.ortho(
                     goes_image_path,
                     data_vars,

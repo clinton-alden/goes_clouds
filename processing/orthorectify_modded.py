@@ -5,6 +5,7 @@ Downloading so I can debug some issues with the functions
 
 EDITS
 - changed how get_dem calls the projection, needed to be an ellipsoid not a datum
+- added timestamp coord to make_ortho_map() output ds 
 """
 
 import logging
@@ -12,6 +13,7 @@ import os
 
 import numpy as np
 import rioxarray
+import rasterio
 import xarray as xr
 
 from goes_ortho.geometry import LonLat2ABIangle
@@ -87,7 +89,7 @@ def make_ortho_map(goes_filepath, dem_filepath, out_filepath=None):
 
     # Open the GOES ABI image
     logging.info("\nOpening GOES ABI image...")
-    abi_image = xr.open_dataset(goes_filepath, decode_times=False)
+    abi_image = xr.open_dataset(goes_filepath, decode_times=True)
     # NOTE: for some reason (?) I sometimes get an error "ValueError: unable to decode time units 'seconds since 2000-01-01 12:00:00' with the default calendar. Try opening your dataset with decode_times=False." so I've added decode_times=False here.
     # Get inputs: projection information from the ABI radiance product (values needed for geometry calculations)
     logging.info("\nGet inputs: projection information from the ABI radiance product")
@@ -100,10 +102,12 @@ def make_ortho_map(goes_filepath, dem_filepath, out_filepath=None):
     lon_0 = abi_image.goes_imager_projection.longitude_of_projection_origin
     e = 0.0818191910435  # GRS-80 eccentricity
     logging.info("...done")
-
+    
     # Load DEM
     logging.info("\nOpening DEM file...")
+    print(dem_filepath)
     dem = rioxarray.open_rasterio(dem_filepath)
+    
     dem = dem.where(dem != dem.attrs["_FillValue"])[0, :, :]  # replace nodata with nans
     dem = dem.fillna(
         0
@@ -161,6 +165,7 @@ def make_ortho_map(goes_filepath, dem_filepath, out_filepath=None):
     ds = xr.Dataset(
         {"elevation": (["latitude", "longitude"], dem.values)},
         coords={
+            't': abi_image.t.values,
             "longitude": (["longitude"], dem.x.data),
             "latitude": (["latitude"], dem.y.data),
             "dem_px_angle_x": (["latitude", "longitude"], abi_grid_x),
@@ -216,7 +221,7 @@ def orthorectify_abi(goes_filepath, pixel_map, data_vars, out_filename=None):
     logging.info("\nDoes the projection info in the image match our mapping?")
     # Open the GOES ABI image
     logging.info("\nOpening GOES ABI image...\t\t\tABI image value\tPixel map value")
-    abi_image = xr.open_dataset(goes_filepath, decode_times=False)
+    abi_image = xr.open_dataset(goes_filepath, decode_times=True)
     logging.info(
         "perspective_point_height + semi_major_axis:\t{}\t{}".format(
             abi_image.goes_imager_projection.perspective_point_height
@@ -373,7 +378,6 @@ def ortho(
     ------------
 
     """
-
     if dem_filepath is None:
         dem_filepath = "temp_{demtype}_DEM.tif".format(
             demtype=demtype,
@@ -388,7 +392,7 @@ def ortho(
 
     # create the mapping between scan angle coordinates and lat/lon given the GOES satellite position and our DEM
     goes_ortho_map = make_ortho_map(goes_image_path, dem_filepath)
-
+    
     # Apply the "ortho map" and save a new NetCDF file with data variables from the original file
     _ = orthorectify_abi(
         goes_image_path, goes_ortho_map, data_vars, out_filename=new_goes_filename
@@ -597,7 +601,7 @@ def orthorectify_abi_zarr(zarr_filepath, pixel_map, data_vars, out_filename=None
         # Create a new xarray dataset with the orthorectified ABI radiance values,
         # Lat, Lon, Elevation, and metadata from the pixel map.
         print(abi_var_values.shape)
-        pixel_map[var] = (["time", "latitude", "longitude"], abi_var_values)
+        pixel_map[var] = (["t", "latitude", "longitude"], abi_var_values)
 
         ## If we are looking at an ABI-L1b-Rad product, create either a reflectance (bands 1-6) or brightness temperautre (bands 7-16) dataset
         # if var == "Rad":
