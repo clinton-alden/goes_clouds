@@ -6,6 +6,10 @@ Downloading so I can debug some issues with the functions
 EDITS
 - changed how get_dem calls the projection, needed to be an ellipsoid not a datum
 - added timestamp coord to make_ortho_map() output ds 
+- indented the get_dem function call in ortho() so it only runs if dem_filepath is None
+     which prevents unnecessary opentopo API calls
+- modified make_ortho_map() to resample ortho'd file to goes file resolution, not DEM resolution
+    - this makes the files 1000x smaller
 """
 
 import logging
@@ -15,6 +19,7 @@ import numpy as np
 import rioxarray
 import rasterio
 import xarray as xr
+from scipy.ndimage import zoom
 
 from goes_ortho.geometry import LonLat2ABIangle
 from goes_ortho.get_data import get_dem
@@ -105,7 +110,7 @@ def make_ortho_map(goes_filepath, dem_filepath, out_filepath=None):
     
     # Load DEM
     logging.info("\nOpening DEM file...")
-    print(dem_filepath)
+    # print(dem_filepath)
     dem = rioxarray.open_rasterio(dem_filepath)
     
     dem = dem.where(dem != dem.attrs["_FillValue"])[0, :, :]  # replace nodata with nans
@@ -113,12 +118,29 @@ def make_ortho_map(goes_filepath, dem_filepath, out_filepath=None):
         0
     )  # fill nans with zeros for the ocean (temporary fix for fog project)
     # dem = dem.where(dem!=0) # replace zeros with nans
+
+    # *** CLINTONS ADDITION ***
+    # Downsample DEM to match ABI grid resolution
+    scale_x = len(abi_image.x) / len(dem.x)
+    scale_y = len(abi_image.y) / len(dem.y)
+
+    downsampled_x = zoom(dem.x, scale_x, order=1)
+    downsampled_y = zoom(dem.y, scale_y, order=1)
+
+    X, Y = np.meshgrid(downsampled_x, downsampled_y)
+    assert X.shape == (len(abi_image.y), len(abi_image.x)), "Shape mismatch with ABI grid"
     # Create 2D arrays of longitude and latitude from the DEM
     logging.info("\nCreate 2D arrays of longitude and latitude from the DEM")
-    X, Y = np.meshgrid(dem.x, dem.y)  # Lon and Lat of each DEM grid cell
-    Z = dem.values  # elevation of each DEM grid cell
-    logging.info("...done")
 
+    Z = dem.values  # elevation of each DEM grid cell
+    # If the DEM is not the same shape as the ABI grid, we need to downsample it
+    Z = zoom(Z, (scale_y, scale_x), order=1)
+    assert Z.shape == (len(abi_image.y), len(abi_image.x)), "Shape mismatch with ABI grid"
+    logging.info("...done")
+    # print('abi_image.x shape: {}, abi_image.y shape: {}'.format(abi_image.x.shape, abi_image.y.shape))
+    # print('downsampled_x shape: {}, downsampled_y shape: {}'.format(downsampled_x.shape, downsampled_y.shape))
+    # print("X shape: {}, Y shape: {}, Z shape: {}".format(X.shape, Y.shape, Z.shape))
+    
     # For each grid cell in the DEM, compute the corresponding ABI scan angle (x and y, radians)
     logging.info(
         "\nFor each grid cell in the DEM, compute the corresponding ABI scan angle (x and y, radians)"
@@ -163,11 +185,11 @@ def make_ortho_map(goes_filepath, dem_filepath, out_filepath=None):
     # Create pixel map dataset
     logging.info("\nCreate pixel map dataset")
     ds = xr.Dataset(
-        {"elevation": (["latitude", "longitude"], dem.values)},
+        {"elevation": (["latitude", "longitude"], Z)},
         coords={
             't': abi_image.t.values,
-            "longitude": (["longitude"], dem.x.data),
-            "latitude": (["latitude"], dem.y.data),
+            "longitude": (["longitude"], downsampled_x.data),
+            "latitude": (["latitude"], downsampled_y.data),
             "dem_px_angle_x": (["latitude", "longitude"], abi_grid_x),
             "dem_px_angle_y": (["latitude", "longitude"], abi_grid_y),
         },
@@ -382,13 +404,13 @@ def ortho(
         dem_filepath = "temp_{demtype}_DEM.tif".format(
             demtype=demtype,
         )
-    get_dem(
-        demtype=demtype,
-        bounds=bounds,
-        api_key=api_key,
-        out_fn=dem_filepath,
-        proj="+proj=lonlat +ellps=GRS80",
-    )  # make sure to convert to GRS80 ellipsoid model GOES ABI fixed grid uses
+        get_dem(
+            demtype=demtype,
+            bounds=bounds,
+            api_key=api_key,
+            out_fn=dem_filepath,
+            proj="+proj=lonlat +ellps=GRS80",
+        )  # make sure to convert to GRS80 ellipsoid model GOES ABI fixed grid uses
 
     # create the mapping between scan angle coordinates and lat/lon given the GOES satellite position and our DEM
     goes_ortho_map = make_ortho_map(goes_image_path, dem_filepath)

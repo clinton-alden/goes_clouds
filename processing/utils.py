@@ -97,6 +97,7 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
 
             # Concatenate datasets along the 't' coordinate
             combined_ds = xr.concat(datasets, dim='t')
+            combined_ds = combined_ds.drop_vars(['dem_px_angle_x', 'dem_px_angle_y'])
 
             # Save the combined dataset to a Zarr file
             out_name = out_name
