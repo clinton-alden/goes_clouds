@@ -7,6 +7,7 @@
 `conda install -c conda-forge gcc_linux-64`
 `conda install -c conda-forge gxx_linux-64`
 3. `pip install goes_ortho`
+4. install goespy by cloning the github repo (pip installing uses a weird/broken version that does not download files correctly) - https://github.com/palexandremello/goes-py/tree/master
 
 
 ### Current to-do list
