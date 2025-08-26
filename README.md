@@ -14,11 +14,9 @@
 1. Create environment using above steps
 2. Download specified channels and dates for GOES data using `./data_download/download.sh`
     - usage: `nohup ./download.sh`
-3. Orthorectify raw GOES .nc files using `./processing/ortho_batch.py`
-    - usage: `python ./ortho_batch.py /path/to/GOES/files/`
+3. Orthorectify raw GOES .nc files using `./processing/batch_ortho.py`
+    - usage: `python ./batch_ortho.py /path/to/GOES/files/`
 4. Combine .nc files to daily .zarr for each day by channel using `utils.goes_nc_to_zarr`
-    - usage: see `./processing/00_goes_rad_corrections.ipynb`
-    - ***WANT TO MAKE .sh FILE*** 
+    - usage: `python ./processing/batch_zarr.py` - modify dates and dir manually
 5. Create RGB composite file for each day using `utils.goes_rad_to_rgb`
-    - usage: see `./processing/00_goes_rad_corrections.ipynb`
-    - ***WANT TO MAKE .sh FILE*** 
+    - usage: see `./processing/batch_rgb.py` - modify dates and dir manually
