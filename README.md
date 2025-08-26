@@ -13,6 +13,6 @@
 ### Current processing workflow
 1. Create environment using above steps
 2. Download specified channels and dates for GOES data using `./data_download/download.sh`
-    usage: `nohup ./download.sh`
+    - usage: `nohup ./download.sh`
 3. Orthorectify raw GOES .nc files using `./processing/ortho_batch.py`
-    usage: `python ./ortho_batch.py /path/to/GOES/files/`
+    - usage: `python ./ortho_batch.py /path/to/GOES/files/`
