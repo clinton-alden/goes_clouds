@@ -12,7 +12,7 @@
 #     done
 # done
 
-for day in {16..16}; do
+for day in {20..20}; do
     for channel in C02 C05 C13; do
         python ./download-goes.py --bucket noaa-goes17 --year 2022 --month 7 --days $day $day --product ABI-L1b-RadC --channel $channel --bounds -124 47 -121 49 --dir /storage/cdalden/goes/washington
         # python ../processing/ortho_batch.py /storage/cdalden/goes/washington/goes17/2022/08/$day/ABI-L1b-RadC/$channel/

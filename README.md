@@ -10,13 +10,9 @@
 4. install goespy by cloning the github repo (pip installing uses a weird/broken version that does not download files correctly) - https://github.com/palexandremello/goes-py/tree/master
 
 
-### Current to-do list
-1. [X] Need to convert from x and y to lat lon
-2. [X] Resample to match resolutions
-3. [X] Correct radiance to reflectivity for bands 2 and 5
-4. [X] Correct radiance to brightness temperature for band 13
-5. [X] Adjust RGB normalization based on the NOAA guidance from Matt Jochum
-6. [ ] Ortho rectify images using goes-ortho
-7. [X] Combine 3 RGB bands into one output file 
-8. [X] Apply pre-processing scaling and offset - Unnecessary, goespy download already does this
-9. [ ] Organize functions into utils for ease of use
+### Current processing workflow
+1. Create environment using above steps
+2. Download specified channels and dates for GOES data using `./data_download/download.sh`
+    usage: `nohup ./download.sh`
+3. Orthorectify raw GOES .nc files using `./processing/ortho_batch.py`
+    usage: `python ./ortho_batch.py /path/to/GOES/files/`
