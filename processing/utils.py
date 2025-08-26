@@ -95,6 +95,7 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
             # Open multiple NetCDF files as a list of datasets
             datasets = [xr.open_dataset(f) for f in nc_files]
 
+
             # Concatenate datasets along the 't' coordinate
             combined_ds = xr.concat(datasets, dim='t')
             combined_ds = combined_ds.drop_vars(['dem_px_angle_x', 'dem_px_angle_y'])
@@ -259,6 +260,14 @@ def goes_rad_to_rgb(path, date, goes, location):
     time_C02 = ds_C02['t']
     ds_C13 = ds_C13.assign_coords(t=time_C02)
     ds_C05 = ds_C05.assign_coords(t=time_C02)
+
+    # Interpolate missing timesteps along the 't' dimension
+    ds_C02 = ds_C02.sortby('t')
+    ds_C05 = ds_C05.sortby('t')
+    ds_C13 = ds_C13.sortby('t')
+    ds_C02 = ds_C02.interpolate_na(dim='t', method='linear')
+    ds_C05 = ds_C05.interpolate_na(dim='t', method='linear')
+    ds_C13 = ds_C13.interpolate_na(dim='t', method='linear')
 
     # Ensure the coordinate ranges overlap
     target_lat = ds_C02['latitude']
