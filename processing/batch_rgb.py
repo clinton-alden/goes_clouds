@@ -4,9 +4,9 @@ import shutil
 
 in_dir = f'/storage/cdalden/goes/washington/goes17/'
 goes = 'goes17'
-start_day = 19
-end_day = 19
-month = 7
+start_day = 21
+end_day = 25
+month = 9
 year = 2022
 
 for day in range(start_day, end_day + 1):

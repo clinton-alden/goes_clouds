@@ -1,6 +1,7 @@
 # Infrastructure for processing GOES ABI data and creating the Day Cloud Phase RGB Composites
 import xarray as xr
 import numpy as np
+import pandas as pd
 import os
 import gc
 import matplotlib.pyplot as plt
@@ -256,18 +257,30 @@ def goes_rad_to_rgb(path, date, goes, location):
     # ds_C05 = ds_C05.assign_coords(y=("y", lat_C05[:,0]), x=("x", lon_C05[0,:]))
     # ds_C13 = ds_C13.assign_coords(y=("y", lat_C13[:,0]), x=("x", lon_C13[0,:]))
 
-    # Extract time coordinates from ds_C02
+    # Some days having missing files, fill times manually
+    # Extract the date information from ds_C02
     time_C02 = ds_C02['t']
-    ds_C13 = ds_C13.assign_coords(t=time_C02)
-    ds_C05 = ds_C05.assign_coords(t=time_C02)
+    full_date = pd.to_datetime(time_C02.values[0])  # Get the first timestamp as reference
+    year, month, day = full_date.year, full_date.month, full_date.day
+
+    # Create a complete time range for the day at 5-minute increments
+    start_time = pd.Timestamp(year=year, month=month, day=day, hour=0, minute=2, second=30)
+    end_time = pd.Timestamp(year=year, month=month, day=day, hour=23, minute=59, second=59)
+    complete_time_range = pd.date_range(start=start_time, end=end_time, freq='5T')
 
     # Interpolate missing timesteps along the 't' dimension
     ds_C02 = ds_C02.sortby('t')
     ds_C05 = ds_C05.sortby('t')
     ds_C13 = ds_C13.sortby('t')
-    ds_C02 = ds_C02.interpolate_na(dim='t', method='linear')
-    ds_C05 = ds_C05.interpolate_na(dim='t', method='linear')
-    ds_C13 = ds_C13.interpolate_na(dim='t', method='linear')
+    
+    # Reindex all datasets to the complete time range, assigning to the nearest timesteps
+    ds_C02 = ds_C02.reindex(t=complete_time_range, method='nearest')
+    ds_C13 = ds_C13.reindex(t=complete_time_range, method='nearest')
+    ds_C05 = ds_C05.reindex(t=complete_time_range, method='nearest')
+
+    # ds_C02 = ds_C02.interpolate_na(dim='t', method='linear')
+    # ds_C05 = ds_C05.interpolate_na(dim='t', method='linear')
+    # ds_C13 = ds_C13.interpolate_na(dim='t', method='linear')
 
     # Ensure the coordinate ranges overlap
     target_lat = ds_C02['latitude']
