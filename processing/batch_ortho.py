@@ -26,7 +26,7 @@ def process_files(root_dir):
                         bounds,
                         api_key,
                         new_goes_filename,
-                        dem_filepath='temp_SRTMGL3_DEM.tif',
+                        dem_filepath='temp_SRTMGL3_DEM.tif', # make this 'None' to download domain first time, otherwise use 'temp_SRTMGL3_DEM.tif'
                         demtype="SRTMGL3",
                         keep_dem=True,
                     )
