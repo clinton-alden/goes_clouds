@@ -2,6 +2,9 @@ import os
 import sys
 import orthorectify_modded
 
+
+### VERY IMPORTANT ###
+# CHANGE THE BOUNDS
 def process_files(root_dir):
     # Loop through all subdirectories and files
     for subdir, _, files in os.walk(root_dir):
@@ -14,7 +17,7 @@ def process_files(root_dir):
                 goes_image_path = netcdf_path
                 data_vars = ["Rad"]
                 new_goes_filename = netcdf_path.replace('.nc', '_ortho.nc')
-                bounds = (-124, 48, -121, 49)
+                bounds = (-109, 37, -104, 41)  
                 api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
 
                 if 'ortho' in netcdf_path:
@@ -26,7 +29,7 @@ def process_files(root_dir):
                         bounds,
                         api_key,
                         new_goes_filename,
-                        dem_filepath='temp_SRTMGL3_DEM.tif', # make this 'None' to download domain first time, otherwise use 'temp_SRTMGL3_DEM.tif'
+                        dem_filepath=None, # make this None to download domain first time, otherwise use 'temp_SRTMGL3_DEM.tif'
                         demtype="SRTMGL3",
                         keep_dem=True,
                     )
