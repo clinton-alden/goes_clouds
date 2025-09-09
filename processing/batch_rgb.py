@@ -2,16 +2,17 @@ import utils
 import os
 import shutil
 
-in_dir = f'/storage/cdalden/goes/washington/goes17/'
-goes = 'goes17'
-start_day = 26
-end_day = 30
-month = 9
-year = 2022
+goes = 'goes16'
+domain = 'colorado'
+in_dir = f'/storage/cdalden/goes/{domain}/{goes}/'
+start_day = 3
+end_day = 8
+month = 1
+year = 2023
 
 for day in range(start_day, end_day + 1):
     date = f'{year}{month:02d}{day:02d}'
-    utils.goes_rad_to_rgb(in_dir, date, goes, location='washington')
+    utils.goes_rad_to_rgb(in_dir, date, goes, location=domain)
     print(f'Finished {date}')
 
 
@@ -19,7 +20,7 @@ for day in range(start_day, end_day + 1):
 
     for channel in channel_list:
         # Construct the file path for the .zarr directory
-        zarr_file = f'{in_dir}{channel}/{goes}_{channel}_washington_{date}.zarr'
+        zarr_file = f'{in_dir}{channel}/{goes}_{channel}_{domain}_{date}.zarr'
         
         # Check if the path exists
         if os.path.exists(zarr_file):
