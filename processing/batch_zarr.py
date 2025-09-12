@@ -3,10 +3,10 @@ import os
 
 in_dir = f'/storage/cdalden/goes/colorado/'
 channel_list = ['C02', 'C05', 'C13']
-start_date = 16
-end_date = 21
-month = 1
-year = 2023
+start_date = 21
+end_date = 31
+month = 8
+year = 2022
 goes_model = 'goes16'
 
 
