@@ -1,17 +1,17 @@
 import utils
 import os
 
-in_dir = f'/storage/cdalden/goes/colorado/'
+in_dir = f'/storage/cdalden/goes/washington/'
 channel_list = ['C02', 'C05', 'C13']
-start_date = 21
-end_date = 31
-month = 8
+start_date = 1
+end_date = 26
+month = 7
 year = 2022
-goes_model = 'goes16'
+goes_model = 'goes17'
 
 
 utils.goes_nc_to_zarr(in_dir, channel_list, start_date, end_date, month, year,
-                       'colorado', goes_model, surprise=True)
+                       'washington', goes_model, surprise=True)
 
 # Delete netcdf files after saving the zarrs
 for day in range(start_date, end_date + 1):

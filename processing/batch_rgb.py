@@ -5,10 +5,10 @@ import shutil
 goes = 'goes16'
 domain = 'colorado'
 in_dir = f'/storage/cdalden/goes/{domain}/{goes}/'
-start_day = 1
-end_day = 31
-month = 8
-year = 2022
+start_day = 6
+end_day = 22
+month = 1
+year = 2023
 
 for day in range(start_day, end_day + 1):
     date = f'{year}{month:02d}{day:02d}'

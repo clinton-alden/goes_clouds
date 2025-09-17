@@ -17,7 +17,7 @@ def process_files(root_dir):
                 goes_image_path = netcdf_path
                 data_vars = ["Rad"]
                 new_goes_filename = netcdf_path.replace('.nc', '_ortho.nc')
-                bounds = (-109, 37, -104, 41)  
+                bounds = (-125, 45, -120, 49)  
                 api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
 
                 if 'ortho' in netcdf_path:
