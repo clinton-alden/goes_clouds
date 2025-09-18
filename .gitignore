@@ -10,3 +10,4 @@
 *.gz
 *.mp4
 *.pyc
+*.sqlite
