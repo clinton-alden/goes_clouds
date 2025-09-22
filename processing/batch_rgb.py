@@ -2,16 +2,17 @@ import utils
 import os
 import shutil
 
-goes = 'goes16'
-domain = 'colorado'
+goes = 'goes17'
+domain = 'washington'
 in_dir = f'/storage/cdalden/goes/{domain}/{goes}/'
-start_day = 6
-end_day = 22
-month = 1
-year = 2023
+start_day = 1
+end_day = 1
+month = 7
+year = 2022
 
 for day in range(start_day, end_day + 1):
     date = f'{year}{month:02d}{day:02d}'
+    print(f'Starting {date}')
     utils.goes_rad_to_rgb(in_dir, date, goes, location=domain)
     print(f'Finished {date}')
 
