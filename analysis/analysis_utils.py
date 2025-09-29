@@ -32,9 +32,6 @@ def daily_cloud_frequency(year, month, state, goes):
     elif month == '06' or month == '09':
         start_day = 1
         end_day = 31
-
-    # add flag for including NIR (blue)
-    blue = False
     
     for day in range(start_day, end_day):    
         date = f'{year}{month}' + str(day).zfill(2)
@@ -44,10 +41,7 @@ def daily_cloud_frequency(year, month, state, goes):
         ds = xr.open_dataset(path + file)
 
         # Make mask for cloud/no cloud
-        if blue:
-            clouds = xr.where((ds.blue >= 0.13) & (ds.green >= 0.15), 1, 0) # cloud (1) if all conds are met, not cloud (0) otherwise
-        else:
-            clouds = xr.where((ds.green >= 0.15), 1, 0)
+        clouds = xr.where((ds.blue >= 0.13) & (ds.green >= 0.15), 1, 0) # cloud (1) if all conds are met, not cloud (0) otherwise
         ds['clouds'] = clouds
 
         # Select the time range between 0000-0300 and 1400-2359
@@ -61,10 +55,7 @@ def daily_cloud_frequency(year, month, state, goes):
 
         # Save the cloud frequency data to a NetCDF file
         out_path = f'/storage/cdalden/goes/{state}/{goes}/cloud_counts/'
-        if blue:
-            out_file = f'{goes}_cloud_frequency_NIR_{state}_{date}.nc'.format(date=date)
-        else:
-            out_file = f'{goes}_cloud_frequency_{state}_{date}.nc'.format(date=date)
+        out_file = f'{goes}_cloud_frequency_{state}_{date}.nc'.format(date=date)
         cloud_counts.to_netcdf(out_path + out_file)
         print(f"Processed and saved cloud frequency for {date}")
 
@@ -116,15 +107,9 @@ def process_monthly_data(year, month, state, goes, save_file=False):
         start_day = 1
         end_day = 31
 
-    # add flag for including NIR (blue)
-    blue = False
-
     # Define the date range and file path
     path = f'/storage/cdalden/goes/{state}/{goes}/cloud_counts/'
-    if blue:
-        file_name_template = f'{goes}_cloud_frequency_NIR_{state}_' + '{date}.nc'
-    else:
-        file_name_template = f'{goes}_cloud_frequency_{state}_' + '{date}.nc'
+    file_name_template = f'{goes}_cloud_frequency_{state}_' + '{date}.nc'
 
     # Generate the list of file paths and corresponding times
     file_paths = []
@@ -153,10 +138,7 @@ def process_monthly_data(year, month, state, goes, save_file=False):
     # monthly frequency 
     combined_ds['monthly_frequency'] = combined_ds['monthly_sum'] / (156*30)  # Assuming 156 observations per day for 30 days
 
-    if blue:
-        out_name = f'{goes}_monthly_cloud_frequency_NIR_{state}_{year}{month}.nc'
-    else:
-        out_name = f'{goes}_monthly_cloud_frequency_{state}_{year}{month}.nc'
+    out_name = f'{goes}_monthly_cloud_frequency_{state}_{year}{month}.nc'
     if save_file:
         combined_ds.to_netcdf(path + out_name)
         print(f"Saved monthly cloud frequency data for month {month}")
