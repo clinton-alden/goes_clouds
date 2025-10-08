@@ -59,12 +59,10 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
             out_day_of_month = '0' + day_of_month
         else:
             out_day_of_month = day_of_month
-        print(f'Starting {str(month)}/{day_of_month}')
+        # print(f'Starting {str(month)}/{day_of_month}')
         
         # Directory containing the NetCDF files
         nc_dir = in_dir + f'{goes_model}/{year}/{month}/{day_of_month}/'
-        # Ensure the directory exists
-        print(f'Looking for NetCDF files in {nc_dir}')
 
         # Check if the directory exists
         if not os.path.exists(nc_dir):
@@ -107,8 +105,8 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
 
             # Force garbage collection to free memory
             gc.collect()
-            if surprise:
-                print('Beep beep, here comes the garbage truck! 🚛')
+            # if surprise:
+                # print('Beep beep, here comes the garbage truck! 🚛')
             print('Finished')
             if surprise:
                 print('🛰️')

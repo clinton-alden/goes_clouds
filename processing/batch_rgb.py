@@ -2,12 +2,12 @@ import utils
 import os
 import shutil
 
-goes = 'goes17'
-domain = 'washington'
+goes = 'goes16'
+domain = 'colorado'
 in_dir = f'/storage/cdalden/goes/{domain}/{goes}/'
-start_day = 1
-end_day = 1
-month = 7
+start_day = 5
+end_day = 30
+month = 4
 year = 2022
 
 for day in range(start_day, end_day + 1):

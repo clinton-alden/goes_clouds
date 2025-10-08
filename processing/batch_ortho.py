@@ -2,7 +2,8 @@ import os
 import sys
 import orthorectify_modded
 
-
+domain = input('What domain are you ortho-ing?    ')
+# domain = 'scripps'
 ### VERY IMPORTANT ###
 # CHANGE THE BOUNDS
 def process_files(root_dir):
@@ -11,13 +12,18 @@ def process_files(root_dir):
         for file in files:
             if file.endswith('.nc'):  # Check if the file is a NetCDF file
                 netcdf_path = os.path.join(subdir, file)
-                print('working on ' + netcdf_path)
+                print('working on ' + str(subdir))
 
                 # Define all args needed for the ortho function
                 goes_image_path = netcdf_path
                 data_vars = ["Rad"]
                 new_goes_filename = netcdf_path.replace('.nc', '_ortho.nc')
-                bounds = (-125, 45, -120, 49)  
+                if domain =='washington':
+                    bounds = (-125, 45, -120, 49)
+                elif domain == 'colorado':
+                    bounds = (-109, 37, -104, 41)
+                elif domain == 'scripps':
+                    bounds = (-118, 32.5, -117, 33.5)
                 api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
 
                 if 'ortho' in netcdf_path:
