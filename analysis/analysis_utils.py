@@ -144,3 +144,75 @@ def process_monthly_data(year, month, state, goes, save_file=False):
         print(f"Saved monthly cloud frequency data for month {month}")
     
     return combined_ds
+
+
+def combine_daily_rgb_to_monthly(domain, goes, month, year):
+    '''
+    Combines daily RGB satellite imagery into a single monthly composite.
+
+    Parameters:
+    - domain (str): The geographical domain or region for the imagery.
+    - goes (str): The GOES satellite identifier (e.g., goes16, goes18).
+    - month (str): The month for which the daily images are to be combined (01-12).
+    - year (str): The year for which the daily images are to be combined.
+
+    Returns:
+    - A monthly composite of the RGB imagery for the specified domain, satellite, month, and year.
+    '''
+    # List to store datasets
+    datasets = []
+
+    if month in ['01', '03', '05', '07', '08', '10', '12']:
+        end_day_of_month = 32
+    elif month in ['04', '06', '09', '11']:
+        end_day_of_month = 31
+    elif month == '02':  # February, be careful about leap years
+        end_day_of_month = 29
+
+    # Loop through all the files
+    for i in range(1, end_day_of_month):  # Loop from 1 to 29
+        # Make i two digits
+        day = f"{i:02}"
+        input_path = '/storage/cdalden/goes/{domain}/{goes}/rgb_composite/'.format(domain=domain, goes=goes)
+        input_file = '{goes}_C02_C05_C13_rgb_{domain}_{year}{month}{day}.nc'.format(goes=goes, domain=domain, 
+                                                                                    year=year, month=month, day=day)
+        
+        # Open the dataset
+        try:
+            dataset = xr.open_dataset(input_path + input_file)
+            
+            # Select pixels where latitude is between 39.065 and 38.904, and longitude is between -107.08 and -106.993
+            if domain == 'colorado':
+                lat_slice = slice(39.065, 38.904)
+                lon_slice = slice(-107.08, -106.993)
+            elif domain == 'scripps':
+                lat_slice = slice(32.97, 32.83)
+                lon_slice = slice(-117.31, -117.23)
+            dataset = dataset.sel(
+                latitude=lat_slice,
+                longitude=lon_slice
+            )
+            
+            # Append the spatially subsetted dataset to the list
+            datasets.append(dataset)
+        
+        except Exception as e:
+        # Print the error and continue with the next file
+            print(f"Error: {e} for file {year}{month}{day}")
+
+    # Combine all datasets along the 'time' dimension
+    combined_dataset = xr.concat(datasets, dim='t', combine_attrs='override')
+    print('done with combo')
+
+
+    # Save the combined dataset to a new NetCDF file
+    output_filepath = '/storage/cdalden/goes/{domain}/{goes}/rgb_composite/'.format(domain=domain, goes=goes)
+    output_filename = 'combined_{goes}_C02_C05_C13_rgb_{domain}_{year}{month}.nc'.format(goes=goes, domain=domain, year=year, month=month)
+    try:
+        combined_dataset.to_netcdf(output_filepath + output_filename)
+        print('processed and saved RGB file to {i}'.format(i=output_filename))
+    except Exception as e:
+        print('nc file not saved correctly')
+    
+
+    return combined_dataset
