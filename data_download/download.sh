@@ -2,12 +2,12 @@
 
 # IMPORTANT - channels need to be 3 digits (ie C02, C05, or C13)
 # Loop through days and channels
-for day in $(seq 2 31); do # don't need to add 1 to the end day since sh is inclusive
+for day in $(seq 1 31); do # don't need to add 1 to the end day since sh is inclusive
     for channel in C02 C05 C13; do
         # Run the download script
         python ./download-goes.py --bucket noaa-goes18 \
                                   --year 2023 \
-                                  --month 5 \
+                                  --month 8 \
                                   --days $day $day \
                                   --product ABI-L1b-RadC \
                                   --channel $channel \
