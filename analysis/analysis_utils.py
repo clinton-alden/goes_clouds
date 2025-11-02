@@ -6,6 +6,10 @@
 
 import xarray as xr
 import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import numpy as np
+from PIL import Image
 
 ####################################################################################
 
@@ -216,3 +220,174 @@ def combine_daily_rgb_to_monthly(domain, goes, month, year):
     
 
     return combined_dataset
+
+
+
+# Function to generate the time string based on date and time of day
+def generate_time(date, time_of_day):
+    # Convert date string to datetime object
+    date_obj = datetime.strptime(date, '%Y%m%d')
+    # Format the date part
+    date_str = date_obj.strftime('%Y-%m-%d')
+    # Combine date and time of day
+    time_str = f'{date_str}T{time_of_day}'
+    return time_str
+
+def cloud_mask(ds):
+    """
+    create a mask to identify clouds with multi-spectral thresholds determined by training a decision tree model
+
+    """
+    domain = 'colorado_summer'
+    green = ds['green'].values
+    blue = ds['blue'].values
+    red = ds['red'].values
+    if domain == 'colorado_summer':
+        mask = (green > 0.19) & (red > 0.07)
+    elif domain == 'colorado_winter':
+        mask = (red > 0.39) & (blue > 0.13)
+    ds_masked = xr.where(mask, 1, 0)
+
+    return ds_masked
+
+
+def plot_rgb_image(ds, date, time_of_day, domain, gif=False, mask=False):
+    """
+    Plots an RGB image from a dataset for a specified date, time of day, and domain.
+
+    Parameters:
+    - ds (xarray.Dataset): The dataset containing the RGB image data.
+    - date (str): The date for the image in 'YYYYMMDD' format.
+    - time_of_day (str): The time of day for the image in 'HHMM' format.
+    - domain (str): The geographical domain or region to plot.
+    - gif (bool, optional): If True, prepares the plot for inclusion in an animated GIF. Default is False.
+    - mask (bool, optional): If True, applies a mask to the image data. Default is False.
+
+    Returns:
+    - None: Displays the plot or saves it, depending on if gif=False/True.
+    """
+    # Extract longitude and latitude values
+    lon = ds['longitude'].values
+    lat = ds['latitude'].values
+    if domain == 'east_river':
+        # Define East River bounds
+        lon_min, lon_max = -107.75, -105.75
+        lat_min, lat_max = 38.3, 39.4
+
+        # Subset the dataset based on the bounds
+        ds = ds.where(
+            (ds['longitude'] >= lon_min) & (ds['longitude'] <= lon_max) &
+            (ds['latitude'] >= lat_min) & (ds['latitude'] <= lat_max),
+            drop=True
+        )
+        extent = [lon_min, lon_max, lat_min, lat_max]
+    else:
+        extent=[lon.min(), lon.max(), lat.min(), lat.max()]
+        
+    # Extract the values as NumPy arrays
+    red = ds['red'].values
+    green = ds['green'].values
+    blue = ds['blue'].values
+
+    # Find the minimum shape among the arrays
+    min_shape = np.min([red.shape, green.shape, blue.shape], axis=0)
+
+    # Resize the arrays to the minimum shape
+    red_resized = red[:min_shape[0], :min_shape[1]]
+    green_resized = green[:min_shape[0], :min_shape[1]]
+    blue_resized = blue[:min_shape[0], :min_shape[1]]
+
+    # Ensure the arrays have the same dimensions
+    assert red_resized.shape == green_resized.shape == blue_resized.shape, "Arrays must have the same shape"
+
+    # Stack the arrays along the last dimension to create an RGB image
+    rgb_image = np.stack([red_resized, green_resized, blue_resized], axis=-1)
+
+    # Plot the RGB image using matplotlib's imshow  
+    rgb_plot = plt.imshow(rgb_image, extent=extent)
+
+    if mask:
+        print('Applying cloud mask...')
+        ds_masked = cloud_mask(ds)
+        plt.imshow(ds_masked, cmap='Blues', extent=[lon.min(), lon.max(), lat.min(), lat.max()], alpha=1)
+        plt.title('GOES Multi-spectral Derived Cloud Mask\n' + date + ' ' + time_of_day + ' UTC')
+    
+    # pixel_lat = 48.464462
+    # pixel_lon = -122.959918
+    # plt.plot(pixel_lon, pixel_lat, 'ro', markersize=5, label='Cattle Point')
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    if not mask:
+        plt.title('GOES Day Cloud Phase RGB Composite\n' + date + ' ' + time_of_day + ' UTC')
+    plt.axis('on')  # Show the axis
+    # size
+    # plt.gcf().set_size_inches(10, 4)  # Set the figure size to 10x10 inches
+
+    # Save the plot as a PNG file
+    filename = f'./plots/goes_RGB_{date}_{time_of_day}.png'
+    plt.savefig(filename, dpi=100)
+
+    
+    if gif:
+        plt.close()
+        return filename
+    else:
+        return rgb_plot
+        plt.show()
+    
+
+def make_gif(ds, date, start_time, end_time, subset, mask=False):
+    """
+    Generates an animated GIF from GOES satellite data for a specified date, time range, and geographical subset.
+
+    Parameters:
+    - ds (xarray.Dataset): The dataset containing the GOES satellite data.
+    - date (str): The date for the GIF in 'YYYYMMDD' format.
+    - start_time (str): The starting time for the GIF in 'HHMM' format.
+    - end_time (str): The ending time for the GIF in 'HHMM' format.
+    - subset (str): The geographical region or subset to include in the GIF.
+    - mask (bool, optional): If True, applies a cloud mask to the data. Default is False.
+
+    Returns:
+    - None: Saves the generated GIF to a specified location.
+    """
+
+    start_time = datetime.strptime(f"{date}T{start_time}00", '%Y%m%dT%H%M%S')
+    end_time = datetime.strptime(f"{date}T{end_time}00", '%Y%m%dT%H%M%S')
+
+    ds = ds.sortby('t')
+
+    # List to store the filenames of the generated plots
+    filenames = []
+
+    # Loop through every 10-minute chunk
+    current_time = start_time
+    while current_time <= end_time:
+        time_str = current_time.strftime('%Y-%m-%dT%H:%M:%S')
+        ds_i = ds.sel(t=time_str, method='nearest')
+        hour_of_day = current_time.strftime('%H:%M')
+        filename = plot_rgb_image(ds_i, date, hour_of_day, gif=True, mask=mask, domain=subset)
+        filenames.append(filename)
+        current_time += timedelta(minutes=5)
+        print(f'Generated RGB image for {time_str}')
+
+    # Create the GIF
+    start_time_out = start_time.strftime('%H%M')
+    end_time_out =  end_time.strftime('%H%M')
+    if mask:
+        output_gif = f'./gifs/masked_goes_rgb_{subset}_{date}_{start_time_out}_{end_time_out}.gif'
+    else:
+        output_gif = f'./gifs/goes_rgb_{subset}_{date}_{start_time_out}_{end_time_out}.gif'
+    # Create the GIF with explicit frame durations
+    frames = [Image.open(filename) for filename in filenames]
+    frames[0].save(
+        output_gif,
+        save_all=True,
+        append_images=frames[1:],
+        duration=100,  # Frame duration in milliseconds (100ms = 0.1s)
+        loop=0)
+
+    # Clean up the temporary files
+    import os
+    for filename in filenames:
+        os.remove(filename)
