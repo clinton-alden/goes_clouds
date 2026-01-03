@@ -3,10 +3,10 @@ import sys
 import orthorectify_modded
 
 # domain = input('What domain are you ortho-ing?    ')
-domain = 'colorado'
+# domain = 'scripps'
 ### VERY IMPORTANT ###
 # CHANGE THE BOUNDS
-def process_files(root_dir):
+def process_files(root_dir, domain):
     # Loop through all subdirectories and files
     for subdir, _, files in os.walk(root_dir):
         for file in files:
@@ -45,12 +45,13 @@ def process_files(root_dir):
 
 if __name__ == "__main__":
     # Check if the root directory is provided as a command-line argument
-    if len(sys.argv) != 2:
-        print("Usage: python script_name.py <root_directory>")
+    if len(sys.argv) != 3:
+        print("Usage: python script_name.py <root_directory> <domain>")
         sys.exit(1)
 
     # Get the root directory from the command-line argument
     root_dir = sys.argv[1]
+    domain = sys.argv[2]
 
     # Process the files
-    process_files(root_dir)
+    process_files(root_dir, domain)
