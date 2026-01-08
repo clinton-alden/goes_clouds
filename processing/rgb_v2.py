@@ -8,7 +8,7 @@ import utils
 
 def main():
     if len(sys.argv) < 4:
-        print("Usage: python script.py <in_dir> <year> <month> [domain] [goes]")
+        print("Usage: python rgb_v2.py <in_dir> <year> <month> [domain] [goes]")
         sys.exit(1)
 
     in_dir = sys.argv[1].rstrip("/") + "/"

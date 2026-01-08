@@ -4,8 +4,8 @@ import sys
 import calendar
 
 # Check for command-line arguments
-if len(sys.argv) != 5:
-    print("Usage: python batch_zarr.py <directory> <year> <month> <goes_model>")
+if len(sys.argv) != 6:
+    print("Usage: python batch_zarr.py <directory> <year> <month> <goes_model> <domain>")
     sys.exit(1)
 
 # Parse command-line arguments
@@ -13,6 +13,7 @@ in_dir = sys.argv[1]
 year = int(sys.argv[2])
 month = int(sys.argv[3])
 goes_model = sys.argv[4]
+domain = sys.argv[5]
 
 # Auto-assign start_date and end_date based on month
 num_days = calendar.monthrange(year, month)[1]
@@ -24,7 +25,7 @@ channel_list = ['C02', 'C05', 'C13']
 print(f"Processing {goes_model} for {year}-{month:02d} (days {start_date}-{end_date})")
 
 utils.goes_nc_to_zarr(in_dir, channel_list, start_date, end_date, month, year,
-                       'scripps', goes_model, surprise=True)
+                       domain, goes_model, surprise=True)
 
 # Delete netcdf files after saving the zarrs
 for day in range(start_date, end_date + 1):

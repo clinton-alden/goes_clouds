@@ -16,8 +16,8 @@ def process_files(root_dir, domain):
 
                 # Define all args needed for the ortho function
                 goes_image_path = netcdf_path
-                # data_vars = ["Rad"]
-                data_vars = ['ACM']
+                data_vars = ["Rad"]
+                # data_vars = ['ACM']
                 new_goes_filename = netcdf_path.replace('.nc', '_ortho.nc')
                 if domain =='washington':
                     bounds = (-125, 45, -120, 49)

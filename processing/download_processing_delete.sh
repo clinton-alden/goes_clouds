@@ -26,7 +26,7 @@ EOF
 DOMAIN=${1:-colorado}
 GOES=${2:-goes16}
 DOWNLOAD_SCRIPT=${DOWNLOAD_SCRIPT:-../data_download/download-goes.py}
-BASE_DIR=${3:-/scratch/cdalden/goes/${DOMAIN}/${GOES}/}
+BASE_DIR=${3:-/storage/cdalden/goes/${DOMAIN}/}
 MAX_PROCS=${MAX_PROCS:-4}
 DEBUG_SINGLE=${DEBUG_SINGLE:-0}
 
@@ -40,8 +40,7 @@ fi
 # months / years to process (you can edit this list or pass one via env)
 months_years=(
     "2022-1"
-    "2022-2"
-    "2023-3"
+    # "2022-2"
 )
 
 channels=(C02 C05 C13)
@@ -67,49 +66,49 @@ process_month() {
     fi
 
     local start_day=1
-    local end_day=${num_days}
+    # local end_day=${num_days}
+    local end_day=1  # for testing, limit to first 1 day
 
     echo "Processing ${year}-${month_padded} days ${start_day}-${end_day}"
     echo "BASE_DIR: ${BASE_DIR}"
     echo "GOES: ${GOES} DOMAIN: ${DOMAIN}"
 
-    for channel in "${channels[@]}"; do
-        echo "-> Download: GOES=${GOES} YEAR=${year} MONTH=${month} CHANNEL=${channel}"
-        # call the download script - pass the same args style as your working example
-        python "${DOWNLOAD_SCRIPT}" \
-            -B noaa-${GOES} \
-            -Y $year \
-            -M $month \
-            -D $start_day $end_day \
-            -p ABI-L1-RadC \
-            -c $channel \
-            -b -109 37 -104 41 \
-            -d "${BASE_DIR}" \
-            || {
-                echo "WARNING: download failed for ${year}-${month} ${channel}"
-            }
-    done
+    # for channel in "${channels[@]}"; do
+    #     echo "-> Download: GOES=${GOES} YEAR=${year} MONTH=${month} CHANNEL=${channel}"
+    #     # call the download script - pass the same args style as your working example
+    #     python "${DOWNLOAD_SCRIPT}" \
+    #         -B noaa-${GOES} \
+    #         -Y $year \
+    #         -M $month \
+    #         -D $start_day $end_day \
+    #         -p ABI-L1b-RadC \
+    #         -c $channel \
+    #         -b -109 37 -104 41 \
+    #         -d "${BASE_DIR}" \
+    #         || {
+    #             echo "WARNING: download failed for ${year}-${month} ${channel}"
+    #         }
+    # done
             # -b -107.5 38.3 -106 39.4 \
     # delete hours 00-13 - be careful about path structure the downloader uses
     echo "-> Deleting hours 00-13 for ${year}-${month_padded}"
     for day in $(seq -w "${start_day}" "${end_day}"); do
       for hour in $(seq -w 0 13); do
         # Note: adjust this path if your downloader writes files to a different structure.
-        rm -rf "${BASE_DIR}/${year}/${month_padded}/${day}/ABI-L1-RadC/${hour}/"* 2>/dev/null || true
+        rm -rf "${BASE_DIR}/${GOES}/${year}/${month}/${day}/ABI-L1b-RadC/${hour}/"* 2>/dev/null || true
       done
     done
 
     # STEP 2 - Ortho
     echo "-> Running ortho for ${year}-${month_padded}"
-    python batch_ortho.py "${BASE_DIR}/${year}/${month_padded}" "${DOMAIN}" || echo "batch_ortho failed for ${year}-${month_padded}"
+    python batch_ortho.py "${BASE_DIR}/${GOES}/${year}/${month}/" "${DOMAIN}" || echo "batch_ortho failed for ${year}-${month_padded}"
 
     # STEP 3 - Zarr
     echo "-> Running zarr for ${year}-${month_padded}"
-    python zarr_v2.py "${BASE_DIR}" "${year}" "${month_padded}" "${GOES}" || echo "zarr_v2 failed for ${year}-${month_padded}"
-
+    python zarr_v2.py "${BASE_DIR}/" "${year}" "${month}" "${GOES}" "${DOMAIN}" || echo "zarr_v2 failed for ${year}-${month_padded}"
     # STEP 4 - RGB file creation
     echo "-> Running RGB creation for ${year}-${month_padded}"
-    python batch_rgb.py "${BASE_DIR}" "${year}" "${month_padded}" "${DOMAIN}" "${GOES}" || echo "batch_rgb failed for ${year}-${month_padded}"
+    python rgb_v2.py "${BASE_DIR}${GOES}" "${year}" "${month}" "${DOMAIN}" "${GOES}" || echo "batch_rgb failed for ${year}-${month_padded}"
 
     echo "=== DONE ${year}-${month_padded} ==="
 }
