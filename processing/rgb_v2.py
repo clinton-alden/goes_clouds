@@ -31,9 +31,12 @@ def main():
         date = f"{year}{month:02d}{day:02d}"
         print(f"\n=== Starting {date} ===")
 
-        # Convert raw → RGB
-        utils.goes_rad_to_rgb(in_dir, date, goes, location=domain)
-        print(f"Finished RGB for {date}")
+        try:
+            # Convert raw → RGB
+            utils.goes_rad_to_rgb(in_dir, date, goes, location=domain)
+            print(f"Finished RGB for {date}")
+        except Exception as e:
+            print(f'RGB for {date} failed with error: {e}')
 
         # Cleanup Zarr files
         for channel in channel_list:

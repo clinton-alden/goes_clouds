@@ -80,7 +80,8 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
 
         # loop through all needed channels
         for channel in channels:
-            out_name = f'{str(goes_model)}_{channel}_{location}_{str(year)}0{str(month)}{out_day_of_month}.zarr'
+            formatted_month = str(month).zfill(2) 
+            out_name = f'{str(goes_model)}_{channel}_{location}_{str(year)}{formatted_month}{out_day_of_month}.zarr'
             print(f'Processing {out_name}...')
             
             # Recursively list all NetCDF files in the directory and subdirectories
@@ -97,7 +98,10 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
 
             # Concatenate datasets along the 't' coordinate
             combined_ds = xr.concat(datasets, dim='t')
-            combined_ds = combined_ds.drop_vars(['dem_px_angle_x', 'dem_px_angle_y'])
+            try:
+                combined_ds = combined_ds.drop_vars(['dem_px_angle_x', 'dem_px_angle_y'])
+            except Exception as e:
+                print(f"Warning: could not drop variables 'dem_px_angle_x' and 'dem_px_angle_y': {e}")
 
             # Save the combined dataset to a Zarr file
             out_name = out_name

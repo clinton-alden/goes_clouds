@@ -29,6 +29,7 @@ DOWNLOAD_SCRIPT=${DOWNLOAD_SCRIPT:-../data_download/download-goes.py}
 BASE_DIR=${3:-/storage/cdalden/goes/${DOMAIN}/}
 MAX_PROCS=${MAX_PROCS:-4}
 DEBUG_SINGLE=${DEBUG_SINGLE:-0}
+RGB_CLOUD_LOCK=${RGB_CLOUD_LOCK:-/tmp/rgb_cloud_serial.lock}
 
 # sanity
 if [ ! -f "${DOWNLOAD_SCRIPT}" ]; then
@@ -39,8 +40,11 @@ fi
 
 # months / years to process (you can edit this list or pass one via env)
 months_years=(
-    "2022-1"
-    # "2022-2"
+    "2022-05"
+    "2022-06"
+    "2022-07"
+    "2022-08"
+    # "2022-11"
 )
 
 channels=(C02 C05 C13)
@@ -66,29 +70,29 @@ process_month() {
     fi
 
     local start_day=1
-    # local end_day=${num_days}
-    local end_day=1  # for testing, limit to first 1 day
+    local end_day=${num_days}
+    # local end_day=1  # for testing, limit to first 1 day
 
     echo "Processing ${year}-${month_padded} days ${start_day}-${end_day}"
     echo "BASE_DIR: ${BASE_DIR}"
     echo "GOES: ${GOES} DOMAIN: ${DOMAIN}"
 
-    # for channel in "${channels[@]}"; do
-    #     echo "-> Download: GOES=${GOES} YEAR=${year} MONTH=${month} CHANNEL=${channel}"
-    #     # call the download script - pass the same args style as your working example
-    #     python "${DOWNLOAD_SCRIPT}" \
-    #         -B noaa-${GOES} \
-    #         -Y $year \
-    #         -M $month \
-    #         -D $start_day $end_day \
-    #         -p ABI-L1b-RadC \
-    #         -c $channel \
-    #         -b -109 37 -104 41 \
-    #         -d "${BASE_DIR}" \
-    #         || {
-    #             echo "WARNING: download failed for ${year}-${month} ${channel}"
-    #         }
-    # done
+    for channel in "${channels[@]}"; do
+        echo "-> Download: GOES=${GOES} YEAR=${year} MONTH=${month} CHANNEL=${channel}"
+        # call the download script - pass the same args style as your working example
+        python "${DOWNLOAD_SCRIPT}" \
+            -B noaa-${GOES} \
+            -Y $year \
+            -M $month \
+            -D $start_day $end_day \
+            -p ABI-L1b-RadC \
+            -c $channel \
+            -b -109 37 -104 41 \
+            -d "${BASE_DIR}" \
+            || {
+                echo "WARNING: download failed for ${year}-${month} ${channel}"
+            }
+    done
             # -b -107.5 38.3 -106 39.4 \
     # delete hours 00-13 - be careful about path structure the downloader uses
     echo "-> Deleting hours 00-13 for ${year}-${month_padded}"
@@ -106,9 +110,17 @@ process_month() {
     # STEP 3 - Zarr
     echo "-> Running zarr for ${year}-${month_padded}"
     python zarr_v2.py "${BASE_DIR}/" "${year}" "${month}" "${GOES}" "${DOMAIN}" || echo "zarr_v2 failed for ${year}-${month_padded}"
-    # STEP 4 - RGB file creation
-    echo "-> Running RGB creation for ${year}-${month_padded}"
+    
+    # STEP 4/5 - serialize RGB and cloud frequency to reduce memory pressure
+    exec {rgb_lock_fd}>"${RGB_CLOUD_LOCK}"
+    flock -x "${rgb_lock_fd}"
+    echo "-> Running RGB creation for ${year}-${month_padded} (serialized)"
     python rgb_v2.py "${BASE_DIR}${GOES}" "${year}" "${month}" "${DOMAIN}" "${GOES}" || echo "batch_rgb failed for ${year}-${month_padded}"
+
+    # echo "-> Calculating hourly cloud frequency and deleting RGB files for ${year}-${month_padded} (serialized)"
+    # python daily_cloud_frequency.py "${BASE_DIR}" "${year}" "${month}" "${DOMAIN}" "${GOES}" || echo "cloud frequency calculation failed for ${year}-${month_padded}"
+    # flock -u "${rgb_lock_fd}"
+    # exec {rgb_lock_fd}>&-
 
     echo "=== DONE ${year}-${month_padded} ==="
 }
