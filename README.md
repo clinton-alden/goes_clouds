@@ -66,6 +66,18 @@ notebooks/demo_goes_rgb_mask.ipynb
 
 The notebook lets a user set lat/lon bounds, dates, and UTC hours, then runs the full workflow and ends with a side-by-side RGB and cloud-mask plot. The default demo is Colorado on `2020-06-30`.
 
+The notebook uses the small wrapper API in `scripts/workflow.py`, so each major step is a one-line function:
+
+```python
+wf.download_goes(config)
+wf.orthorectify(config)
+wf.build_zarr(config)
+wf.build_rgb(config)
+wf.apply_mask(config)
+```
+
+These functions show compact progress bars and suppress noisy command output unless something fails.
+
 ## 2. Add Your Own API Keys
 
 GOES data come from public NOAA AWS buckets and do not require credentials.
@@ -188,6 +200,6 @@ test -n "${OPENTOPOGRAPHY_API_KEY}" || echo "Set OPENTOPOGRAPHY_API_KEY before o
 ## Notes For New Research Sites
 
 - `C02`, `C05`, and `C13` are required for this RGB/cloud-mask method.
-- `GOES_HOURS=14-23` keeps daytime imagery for western U.S. examples. Change this for other longitudes/seasons.
+- `GOES_HOURS=14-23` keeps daytime imagery for western U.S. examples. Change this for other longitudes/seasons; the RGB mask is intended for daylight imagery only.
 - `thresholds/gothic_temp_bin_rgb_thresholds_10c.csv` contains trained RGB thresholds from the original research workflow. Treat it as a starting point and validate/retrain for different regions, seasons, land covers, or snow conditions.
 - Large monthly jobs can use substantial storage. Keep `BASE_DIR` on scratch or project storage rather than your home directory.
