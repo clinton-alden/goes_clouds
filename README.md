@@ -64,7 +64,9 @@ For a guided one-day example, open:
 notebooks/demo_goes_rgb_mask.ipynb
 ```
 
-The notebook lets a user set lat/lon bounds, dates, and UTC hours, then runs the full workflow and ends with a side-by-side RGB and cloud-mask plot. The default demo is Colorado on `2020-06-30`.
+The notebook lets a user set lat/lon bounds, dates, and UTC hours, then runs the full workflow and ends with a side-by-side RGB and cloud-mask plot. The default demo is Colorado on `2020-06-30` using one 5-minute daylight scan so it can run as a practical smoke test.
+
+`GOES_HOURS` controls downloaded imagery. A single value like `20` selects the 20 UTC hour; a range like `18-22` is inclusive and selects five hours. `GOES_TIMESTEPS_PER_HOUR=1` keeps only one 5-minute scan per selected hour for demos. Set it to `None` to download every scan in each selected hour. GOES CONUS imagery is usually every 5 minutes, so one full hour is about 12 files per channel. Because the workflow downloads three channels (`C02`, `C05`, `C13`), `18-22` for one day is roughly `5 * 12 * 3 = 180` files before orthorectification.
 
 The notebook uses the small wrapper API in `scripts/workflow.py`, so each major step is a one-line function:
 

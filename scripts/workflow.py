@@ -8,6 +8,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 
 import pandas as pd
 from tqdm.auto import tqdm
@@ -25,7 +27,8 @@ class WorkflowConfig:
     lon_max: float
     lat_max: float
     base_dir: Path
-    goes_hours: str = "14-23"
+    goes_hours: str = "20"
+    goes_timesteps_per_hour: int | None = None
     start_hour_utc: float = 14
     end_hour_utc: float = 24
     threshold_csv: Path | None = None
@@ -94,6 +97,8 @@ class WorkflowConfig:
                 "PYTHONPATH": f"{self.scripts_dir}:{env.get('PYTHONPATH', '')}",
             }
         )
+        if self.goes_timesteps_per_hour is not None:
+            env["GOES_TIMESTEPS_PER_HOUR"] = str(self.goes_timesteps_per_hour)
         return env
 
 
@@ -118,6 +123,13 @@ def download_goes(config: WorkflowConfig) -> list[Path]:
     download_script = config.scripts_dir / "download-goes.py"
     outputs: list[Path] = []
     tasks = [(date, channel) for date in config.dates for channel in ("C02", "C05", "C13")]
+    hours = _parse_goes_hours(config.goes_hours)
+    timesteps = config.goes_timesteps_per_hour or 12
+    expected_files = len(tasks) * len(hours) * timesteps
+    _status(
+        f"Download request: {len(config.dates)} day(s), 3 channels, "
+        f"{len(hours)} inclusive UTC hour(s), roughly {expected_files} files"
+    )
     for date, channel in tqdm(tasks, desc="download", unit="channel"):
         year, month, day = date.year, date.month, date.day
         _status(f"Downloading {config.goes} {channel} for {date:%Y-%m-%d}")
@@ -158,8 +170,14 @@ def orthorectify(config: WorkflowConfig) -> None:
     ortho_script = config.scripts_dir / "batch_ortho.py"
     for date in tqdm(config.dates, desc="ortho", unit="day"):
         month_dir = config.base_dir / config.goes / str(date.year) / str(date.month)
-        _status(f"Orthorectifying {date:%Y-%m-%d}")
-        _run([sys.executable, ortho_script, month_dir, config.domain], config)
+        pending = _count_pending_ortho_inputs(month_dir)
+        _status(f"Orthorectifying {date:%Y-%m-%d}: {pending} file(s) pending")
+        _run_with_ortho_progress(
+            [sys.executable, ortho_script, month_dir, config.domain],
+            config,
+            month_dir,
+            pending,
+        )
     _status("Orthorectification step complete")
 
 
@@ -172,7 +190,7 @@ def build_zarr(config: WorkflowConfig) -> None:
             [
                 sys.executable,
                 zarr_script,
-                config.base_dir,
+                str(config.base_dir) + "/",
                 date.year,
                 date.month,
                 date.day,
@@ -189,6 +207,8 @@ def build_zarr(config: WorkflowConfig) -> None:
 
 def build_rgb(config: WorkflowConfig) -> list[Path]:
     """Build daily RGB NetCDF files from C02/C05/C13 Zarr stores."""
+    if str(config.scripts_dir) not in sys.path:
+        sys.path.insert(0, str(config.scripts_dir))
     import utils
 
     outputs = []
@@ -200,6 +220,7 @@ def build_rgb(config: WorkflowConfig) -> list[Path]:
                 config.date_ymd(date),
                 config.goes,
                 location=config.domain,
+                complete_day=config.goes_timesteps_per_hour is None,
             )
         outputs.append(config.rgb_path(date))
     _status("RGB step complete")
@@ -261,6 +282,70 @@ def _run(cmd: list[object], config: WorkflowConfig) -> None:
     if result.returncode != 0:
         tail = "\n".join((result.stdout + "\n" + result.stderr).splitlines()[-20:])
         raise RuntimeError(f"Command failed: {' '.join(cmd)}\n\nLast output lines:\n{tail}")
+
+
+def _run_with_ortho_progress(
+    cmd: list[object], config: WorkflowConfig, month_dir: Path, total_files: int
+) -> None:
+    cmd = [str(part) for part in cmd]
+    if not config.run:
+        _status("Dry run: " + " ".join(cmd))
+        return
+    if total_files == 0:
+        _status("Orthorectification already complete")
+        return
+
+    with tempfile.TemporaryFile(mode="w+t") as log:
+        process = subprocess.Popen(
+            cmd,
+            cwd=config.repo_dir,
+            env=config.env(),
+            text=True,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+        with tqdm(total=total_files, desc="ortho files", unit="file", leave=False) as progress:
+            while process.poll() is None:
+                completed = total_files - _count_pending_ortho_inputs(month_dir)
+                progress.update(max(0, completed - progress.n))
+                time.sleep(2)
+            completed = total_files - _count_pending_ortho_inputs(month_dir)
+            progress.update(max(0, completed - progress.n))
+
+        if process.returncode != 0:
+            log.seek(0)
+            tail = "\n".join(log.read().splitlines()[-20:])
+            raise RuntimeError(f"Command failed: {' '.join(cmd)}\n\nLast output lines:\n{tail}")
+
+
+def _parse_goes_hours(goes_hours: str) -> list[int]:
+    """Parse the download hour syntax. Ranges are inclusive, e.g. 18-22 is 5 hours."""
+    value = str(goes_hours).strip()
+    if not value:
+        return list(range(24))
+    if "-" in value and "," not in value:
+        start, end = (int(part) for part in value.split("-", 1))
+        if end < start:
+            raise ValueError(f"GOES_HOURS range must increase, got {goes_hours!r}")
+        hours = list(range(start, end + 1))
+    else:
+        hours = [int(part) for part in value.split(",") if part.strip()]
+    if any(hour < 0 or hour > 23 for hour in hours):
+        raise ValueError(f"GOES_HOURS values must be between 0 and 23, got {goes_hours!r}")
+    return hours
+
+
+def _count_pending_ortho_inputs(month_dir: Path) -> int:
+    if not month_dir.exists():
+        return 0
+    count = 0
+    for path in month_dir.rglob("*.nc"):
+        if path.name.endswith("_ortho.nc"):
+            continue
+        if path.with_name(path.stem + "_ortho.nc").exists():
+            continue
+        count += 1
+    return count
 
 
 def _dedupe_zarr_timestamps(config: WorkflowConfig, date: pd.Timestamp) -> None:

@@ -103,6 +103,8 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
             formatted_month = str(month).zfill(2) 
             out_name = f'{str(goes_model)}_{channel}_{location}_{str(year)}{formatted_month}{out_day_of_month}.zarr'
             print(f'Processing {out_name}...')
+            out_dir = os.path.join(in_dir, goes_model, channel)
+            os.makedirs(out_dir, exist_ok=True)
             
             # Recursively list all NetCDF files in the directory and subdirectories
             nc_files = []
@@ -123,7 +125,7 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
                 print(f"Warning: could not drop variables 'dem_px_angle_x' and 'dem_px_angle_y': {e}")
 
             # Save the combined dataset to a Zarr file
-            combined_ds.to_zarr(in_dir + f'{goes_model}/{channel}/' + out_name)
+            combined_ds.to_zarr(os.path.join(out_dir, out_name))
 
             # Force garbage collection to free memory
             gc.collect()
@@ -275,7 +277,7 @@ def radiance_to_brightness_temp(ds, band):
     return ds
 
 
-def goes_rad_to_rgb(path, date, goes, location):
+def goes_rad_to_rgb(path, date, goes, location, complete_day=True):
     """
     Downscale GOES bands C02, C05, and C13 to the same grid and interpolate to match the target dataset.
     The function also calculates reflectivity and brightness temperature for the specified bands.
@@ -307,26 +309,27 @@ def goes_rad_to_rgb(path, date, goes, location):
     C13_file = f'C13/{goes}_C13_{location}_{date}.zarr'
     ds_C13 = xr.open_dataset(path + C13_file)
 
-    # Some days having missing files, fill times manually
-    # Extract the date information from ds_C02
-    time_C02 = ds_C02['t']
-    full_date = pd.to_datetime(time_C02.values[0])  # Get the first timestamp as reference
-    year, month, day = full_date.year, full_date.month, full_date.day
-
-    # Create a complete time range for the day at 5-minute increments
-    start_time = pd.Timestamp(year=year, month=month, day=day, hour=0, minute=2, second=30)
-    end_time = pd.Timestamp(year=year, month=month, day=day, hour=23, minute=59, second=59)
-    complete_time_range = pd.date_range(start=start_time, end=end_time, freq='5T')
-
     # Interpolate missing timesteps along the 't' dimension
     ds_C02 = drop_duplicate_t(ds_C02.sortby('t'), label=f'{goes} C02 {location} {date}')
     ds_C05 = drop_duplicate_t(ds_C05.sortby('t'), label=f'{goes} C05 {location} {date}')
     ds_C13 = drop_duplicate_t(ds_C13.sortby('t'), label=f'{goes} C13 {location} {date}')
-    
-    # Reindex all datasets to the complete time range, assigning to the nearest timesteps
-    ds_C02 = ds_C02.reindex(t=complete_time_range, method='nearest')
-    ds_C13 = ds_C13.reindex(t=complete_time_range, method='nearest')
-    ds_C05 = ds_C05.reindex(t=complete_time_range, method='nearest')
+
+    if complete_day:
+        # Some days having missing files, fill times manually.
+        full_date = pd.to_datetime(ds_C02['t'].values[0])
+        year, month, day = full_date.year, full_date.month, full_date.day
+        start_time = pd.Timestamp(year=year, month=month, day=day, hour=0, minute=2, second=30)
+        end_time = pd.Timestamp(year=year, month=month, day=day, hour=23, minute=59, second=59)
+        complete_time_range = pd.date_range(start=start_time, end=end_time, freq='5T')
+
+        # Reindex all datasets to the complete time range, assigning to the nearest timesteps.
+        ds_C02 = ds_C02.reindex(t=complete_time_range, method='nearest')
+        ds_C13 = ds_C13.reindex(t=complete_time_range, method='nearest')
+        ds_C05 = ds_C05.reindex(t=complete_time_range, method='nearest')
+    else:
+        # Fast demos may intentionally download only a few scans; preserve that sparse time axis.
+        ds_C13 = ds_C13.reindex(t=ds_C02['t'], method='nearest')
+        ds_C05 = ds_C05.reindex(t=ds_C02['t'], method='nearest')
 
     # Ensure the coordinate ranges overlap
     target_lat = ds_C02['latitude']
@@ -367,6 +370,7 @@ def goes_rad_to_rgb(path, date, goes, location):
     combined_ds = combined_ds.assign_coords(latitude=combined_ds['latitude'].values[::-1])
     
     out_name = f'{goes}_C02_C05_C13_rgb_{location}_{date}.nc'
+    os.makedirs(path + 'rgb_composite/', exist_ok=True)
     combined_ds.to_netcdf(path + f'rgb_composite/{out_name}', mode='w', format='NETCDF4')
 
 

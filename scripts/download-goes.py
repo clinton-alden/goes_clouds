@@ -2,7 +2,10 @@ import argparse
 import os
 from glob import glob
 
+import boto3
 import numpy as np
+from botocore import UNSIGNED
+from botocore.config import Config
 from goespy.Downloader import (
     ABI_Downloader,  # https://github.com/palexandremello/goes-py
 )
@@ -126,6 +129,9 @@ if hours_env:
     if parsed_hours:
         hours = parsed_hours
         print(f"Using GOES_HOURS override: {hours}")
+
+timesteps_per_hour_env = os.environ.get("GOES_TIMESTEPS_PER_HOUR", "").strip()
+timesteps_per_hour = int(timesteps_per_hour_env) if timesteps_per_hour_env else None
 # Specify GOES ABI product, channel, lat/lon bounds, directory path for storing files
 product = args.product
 channel = args.channel  # e.g. 'C14' is the 11.2 micron channel, "Longwave window"
@@ -139,6 +145,46 @@ print(
         n=bounds[1], w=bounds[2], e=bounds[3], s=bounds[0]
     )
 )
+
+
+def _download_limited_timesteps(
+    storage_path, bucket, year, month, day, hour, product, channel, max_files
+):
+    """Download only the first N GOES files for an hour instead of the full hour."""
+    import datetime as dt
+
+    day = int(day)
+    hour = f"{int(hour):02d}"
+    julian_day = dt.date(int(year), int(month), day).timetuple().tm_yday
+    prefix = f"{product}/{year}/{julian_day:03d}/{hour}/"
+    out_dir = os.path.join(
+        storage_path,
+        bucket[5:],
+        str(year),
+        str(month),
+        str(day),
+        product,
+        hour,
+        channel,
+    )
+    os.makedirs(out_dir, exist_ok=True)
+
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    keys = sorted(
+        item["Key"]
+        for item in response.get("Contents", [])
+        if item["Key"].endswith(".nc") and f"M6{channel}" in os.path.basename(item["Key"])
+    )[:max_files]
+    if not keys:
+        raise FileNotFoundError(f"No GOES files found at s3://{bucket}/{prefix}")
+
+    print(f"Downloading {len(keys)} timestep(s) from s3://{bucket}/{prefix}")
+    for key in keys:
+        out_path = os.path.join(out_dir, os.path.basename(key))
+        if os.path.exists(out_path):
+            continue
+        s3.download_file(bucket, key, out_path)
 
 
 ##############################################################
@@ -160,18 +206,31 @@ for d in range(len(days)):
                 channel,
             )
         )
-        if not os.path.exists(filepath[i]):
-            ABI = ABI_Downloader(
-                storage_path, bucket, year, month, days[d], hours[h], product, channel
+        if timesteps_per_hour:
+            _download_limited_timesteps(
+                storage_path,
+                bucket,
+                year,
+                month,
+                days[d],
+                hours[h],
+                product,
+                channel,
+                timesteps_per_hour,
             )
+        else:
+            if not os.path.exists(filepath[i]):
+                ABI = ABI_Downloader(
+                    storage_path, bucket, year, month, days[d], hours[h], product, channel
+                )
 
-            # now try and crop these so they don't take up so much space - this is very inefficient but oh well it's what I have right now
-            if os.path.exists(
-                filepath[i]
-            ):  # we have to make sure the path exists (meaning we downloaded something) before running the subsetNetCDF function
-                print("\nSubsetting files in...{}".format(filepath[i]))
-                for file in glob(filepath[i] + "*.nc"):
-                    subsetNetCDF(file, bounds)
+        # now try and crop these so they don't take up so much space - this is very inefficient but oh well it's what I have right now
+        if os.path.exists(
+            filepath[i]
+        ):  # we have to make sure the path exists (meaning we downloaded something) before running the subsetNetCDF function
+            print("\nSubsetting files in...{}".format(filepath[i]))
+            for file in glob(filepath[i] + "*.nc"):
+                subsetNetCDF(file, bounds)
         i += 1
 
 
