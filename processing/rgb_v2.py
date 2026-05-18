@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""
+RGB Processing Script v2
+Source: https://github.com/clinton-alden/goes_clouds/blob/master/processing/rgb_v2.py
+
+Processes GOES Zarr files to create RGB composites for a full month.
+Automatically cleans up Zarr files after processing.
+
+Usage:
+    python rgb_v2.py <in_dir> <year> <month> [domain] [goes]
+
+Example:
+    python rgb_v2.py /storage/cdalden/goes/colorado/ 2022 7 colorado goes16
+"""
+
 import sys
 import os
 import shutil
@@ -35,6 +49,7 @@ def main():
             # Convert raw → RGB
             utils.goes_rad_to_rgb(in_dir, date, goes, location=domain)
             print(f"Finished RGB for {date}")
+
         except Exception as e:
             print(f'RGB for {date} failed with error: {e}')
 

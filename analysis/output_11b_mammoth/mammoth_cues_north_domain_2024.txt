@@ -1,0 +1,8 @@
+CUES station latitude,longitude: 37.643100,-119.029100
+Domain definition: north edge at CUES latitude; 5 km south; 5 km east and 5 km west
+LAT_MIN,LAT_MAX,LON_MIN,LON_MAX: 37.59818444,37.64310000,-119.08582371,-118.97237629
+Domain pixel count: 122
+Selected thresholds CLOUDY_RATIO,CLEAR_RATIO: 0.45,0.75
+Rows in RGB domain mean table: 96728
+Rows in training table: 10156
+Class counts: {1: 6778, 0: 3378}

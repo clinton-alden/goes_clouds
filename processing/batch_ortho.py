@@ -4,14 +4,19 @@ import orthorectify_modded
 
 # domain = input('What domain are you ortho-ing?    ')
 # domain = 'scripps'
+
 ### VERY IMPORTANT ###
 # CHANGE THE BOUNDS
 def process_files(root_dir, domain):
+    print('DOMAIN: ' + str(domain))
     # Loop through all subdirectories and files
     for subdir, _, files in os.walk(root_dir):
         for file in files:
             if file.endswith('.nc'):  # Check if the file is a NetCDF file
                 netcdf_path = os.path.join(subdir, file)
+                if not os.path.exists(netcdf_path):
+                    print(f"File disappeared before processing, skipping: {netcdf_path}")
+                    continue
                 print('working on ' + str(subdir))
 
                 # Define all args needed for the ortho function
@@ -23,13 +28,23 @@ def process_files(root_dir, domain):
                     bounds = (-125, 45, -120, 49)
                 elif domain == 'colorado':
                     bounds = (-109, 37, -104, 41)
+                elif domain == 'colorado_west23':
+                    bounds = (-109, 37, -104, 41)
+                elif domain == 'sierra':
+                    bounds = (-121, 35, -118, 40)
                 elif domain == 'scripps':
                     bounds = (-118, 32.5, -117, 33.5)
                 api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
 
-                if 'ortho' in netcdf_path:
+                if goes_image_path.endswith('_ortho.nc'):
                     print(f"File {goes_image_path} already ortho'd, skipping.")
-                else:
+                    continue
+
+                if os.path.exists(new_goes_filename):
+                    print(f"Output already exists, skipping: {new_goes_filename}")
+                    continue
+
+                try:
                     orthorectify_modded.ortho(
                         goes_image_path,
                         data_vars,
@@ -40,8 +55,19 @@ def process_files(root_dir, domain):
                         demtype="SRTMGL3",
                         keep_dem=True,
                     )
-                    # Optionally delete the original NetCDF file
+                except FileNotFoundError:
+                    print(f"Missing during ortho open, skipping: {goes_image_path}")
+                    continue
+                except PermissionError:
+                    print(f"Permission denied during ortho write, skipping: {new_goes_filename}")
+                    continue
+
+                # Delete the original file if it still exists. Some ortho paths
+                # may already remove or move it.
+                try:
                     os.remove(netcdf_path)
+                except FileNotFoundError:
+                    print(f"Source file already removed, skipping delete: {netcdf_path}")
 
 if __name__ == "__main__":
     # Check if the root directory is provided as a command-line argument

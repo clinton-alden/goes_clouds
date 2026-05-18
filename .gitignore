@@ -11,3 +11,5 @@
 *.mp4
 *.pyc
 *.sqlite
+*.pbs
+*.docx

@@ -304,12 +304,18 @@ def plot_rgb_image(ds, date, time_of_day, domain, gif=False, mask=False):
     rgb_image = np.stack([red_resized, green_resized, blue_resized], axis=-1)
 
     # Plot the RGB image using matplotlib's imshow  
-    rgb_plot = plt.imshow(rgb_image, extent=extent)
+    rgb_plot = plt.imshow(rgb_image, extent=extent, origin='lower')
 
     if mask:
         print('Applying cloud mask...')
         ds_masked = cloud_mask(ds)
-        plt.imshow(ds_masked, cmap='Blues', extent=[lon.min(), lon.max(), lat.min(), lat.max()], alpha=1)
+        plt.imshow(
+            ds_masked,
+            cmap='Blues',
+            extent=[lon.min(), lon.max(), lat.min(), lat.max()],
+            alpha=1,
+            origin='lower',
+        )
         plt.title('GOES Multi-spectral Derived Cloud Mask\n' + date + ' ' + time_of_day + ' UTC')
     
     # pixel_lat = 48.464462

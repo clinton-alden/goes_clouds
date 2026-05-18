@@ -1,0 +1,8 @@
+SW file: /glade/u/home/cdalden/goes_work/processing/senator_beck_test/surface_obs_shortwave/SBSP/SBSP_1hr_2010-2024.csv
+SW column used: PyDwn_Filt_W
+Air temperature source: (LoAir_Min_C + LoAir_Max_C)/2
+RGB file count: 706
+RGB time span: 2023-01-01 00:02:30 to 2025-04-07 23:57:30
+Training rows: 9066
+Class counts: {1: 9066}
+Final CLOUDY_RATIO,CLEAR_RATIO: 0.45,0.75

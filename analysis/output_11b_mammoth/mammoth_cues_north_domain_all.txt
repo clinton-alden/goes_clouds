@@ -1,0 +1,6 @@
+RGB files used: 702
+RGB time span: 2023-01-01 00:02:30 to 2024-12-31 23:57:30
+Fixed SW thresholds CLOUDY_RATIO,CLEAR_RATIO: 0.45,0.75
+Rows in RGB domain mean table: 201446
+Rows in training table: 14691
+Class counts: {1: 14691}

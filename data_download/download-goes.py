@@ -110,6 +110,22 @@ hours = [
     "22",
     "23",
 ]  # all hours (can we just use linspace of ints here instead of list of strings?)
+
+# Optional hour override via env var, e.g. GOES_HOURS=16-23 or GOES_HOURS=16,17,18
+hours_env = os.environ.get("GOES_HOURS", "").strip()
+if hours_env:
+    parsed_hours = []
+    if "-" in hours_env and "," not in hours_env:
+        start_h, end_h = hours_env.split("-", 1)
+        start_i = int(start_h)
+        end_i = int(end_h)
+        parsed_hours = [f"{h:02d}" for h in range(start_i, end_i + 1)]
+    else:
+        parsed_hours = [f"{int(h):02d}" for h in hours_env.split(",") if h.strip() != ""]
+
+    if parsed_hours:
+        hours = parsed_hours
+        print(f"Using GOES_HOURS override: {hours}")
 # Specify GOES ABI product, channel, lat/lon bounds, directory path for storing files
 product = args.product
 channel = args.channel  # e.g. 'C14' is the 11.2 micron channel, "Longwave window"

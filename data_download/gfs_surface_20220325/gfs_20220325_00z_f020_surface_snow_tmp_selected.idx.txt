@@ -1,0 +1,5 @@
+563:414636545:d=2022032500:TMP:surface:20 hour fcst:
+577:420584314:d=2022032500:WEASD:surface:20 hour fcst:
+578:421118517:d=2022032500:SNOD:surface:20 hour fcst:
+601:433690135:d=2022032500:CSNOW:surface:20 hour fcst:
+728:528744536:d=2022032500:LAND:surface:20 hour fcst:
