@@ -1,0 +1,24 @@
+#!/bin/bash
+#PBS -q casper
+#PBS -l select=1:ncpus=8:mem=128GB
+#PBS -l walltime=24:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+
+export PYTHON_BIN="${PYTHON_BIN:-python}"
+export BASE_DIR="${BASE_DIR:?BASE_DIR is required}"
+export GOES="${GOES:-goes16}"
+export DOMAIN="${DOMAIN:-colorado}"
+export GOES_HOURS="${GOES_HOURS:-14-23}"
+export YEAR="${YEAR:?YEAR is required}"
+export MONTH="${MONTH:?MONTH is required}"
+export LON_MIN="${LON_MIN:?LON_MIN is required}"
+export LAT_MIN="${LAT_MIN:?LAT_MIN is required}"
+export LON_MAX="${LON_MAX:?LON_MAX is required}"
+export LAT_MAX="${LAT_MAX:?LAT_MAX is required}"
+export OPENTOPOGRAPHY_API_KEY="${OPENTOPOGRAPHY_API_KEY:?OPENTOPOGRAPHY_API_KEY is required}"
+
+./scripts/run_month_goes_rgb.sh

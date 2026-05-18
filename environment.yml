@@ -1,0 +1,35 @@
+name: goes_downloading
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.11
+  - boto3
+  - awscli
+  - ipykernel
+  - numpy
+  - pandas
+  - matplotlib
+  - imageio
+  - xarray
+  - rioxarray
+  - gdal
+  - pyproj
+  - requests
+  - rasterio
+  - netcdf4
+  - h5netcdf
+  - zarr
+  - dask
+  - distributed
+  - s3fs
+  - fsspec
+  - aiohttp
+  - scipy
+  - geopandas
+  - tqdm
+  - scikit-learn
+  - pip
+  - pip:
+      - cdsapi
+      - goes_ortho
+      - git+https://github.com/palexandremello/goes-py.git

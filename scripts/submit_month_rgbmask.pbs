@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -q casper
+#PBS -l select=1:ncpus=1:mem=24GB
+#PBS -l walltime=06:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+
+export PYTHON_BIN="${PYTHON_BIN:-python}"
+export YEAR="${YEAR:?YEAR is required}"
+export MONTH="${MONTH:?MONTH is required}"
+export GOES="${GOES:-goes16}"
+export DOMAIN="${DOMAIN:-colorado}"
+export RGB_DIR="${RGB_DIR:?RGB_DIR is required}"
+export ERA5_DIR="${ERA5_DIR:?ERA5_DIR is required}"
+export OUTPUT_BASE="${OUTPUT_BASE:?OUTPUT_BASE is required}"
+export THRESHOLD_CSV="${THRESHOLD_CSV:-$PWD/thresholds/gothic_temp_bin_rgb_thresholds_10c.csv}"
+
+./scripts/run_month_rgbmask.sh
