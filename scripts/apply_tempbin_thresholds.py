@@ -82,6 +82,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_ERA5_PADDING_DEG,
         help="Padding added around RGB bounds when downloading ERA5-Land",
     )
+    parser.add_argument(
+        "--start-hour-utc",
+        type=float,
+        default=START_HOUR_UTC,
+        help="First UTC hour to include in the output mask, e.g. 14 or 14.5",
+    )
+    parser.add_argument(
+        "--end-hour-utc",
+        type=float,
+        default=END_HOUR_UTC,
+        help="Exclusive ending UTC hour to include in the output mask, e.g. 24",
+    )
     return parser
 
 
@@ -190,12 +202,14 @@ def choose_bin(temp_c: np.ndarray, left_edges: np.ndarray, right_edges: np.ndarr
     return idx
 
 
-def select_target_hours(ds: xr.Dataset) -> xr.Dataset:
+def select_target_hours(ds: xr.Dataset, start_hour_utc: float, end_hour_utc: float) -> xr.Dataset:
     times = pd.DatetimeIndex(pd.to_datetime(ds["t"].values))
     hour_float = times.hour + times.minute / 60.0 + times.second / 3600.0
-    keep = (hour_float >= START_HOUR_UTC) & (hour_float < END_HOUR_UTC)
+    keep = (hour_float >= start_hour_utc) & (hour_float < end_hour_utc)
     if not np.any(keep):
-        raise ValueError("No GOES timesteps found in the requested 14Z-00Z window")
+        raise ValueError(
+            f"No GOES timesteps found in the requested {start_hour_utc:g}Z-{end_hour_utc:g}Z window"
+        )
     return ds.isel(t=np.where(keep)[0])
 
 
@@ -246,12 +260,14 @@ def build_cloud_mask(
     threshold_csv: Path,
     mask_path: Path,
     domain: str,
+    start_hour_utc: float,
+    end_hour_utc: float,
 ) -> tuple[pd.DataFrame, pd.Series]:
     thresholds = load_thresholds(threshold_csv)
     t2m_field = load_era5_temp_field(era5_path)
 
     with xr.open_dataset(rgb_path) as ds:
-        ds = select_target_hours(ds)
+        ds = select_target_hours(ds, start_hour_utc, end_hour_utc)
         goes_times = pd.DatetimeIndex(pd.to_datetime(ds["t"].values))
         goes_lat = np.asarray(ds["latitude"].values, dtype=np.float64)
         goes_lon = np.asarray(ds["longitude"].values, dtype=np.float64)
@@ -304,6 +320,8 @@ def build_cloud_mask(
                 "rgb_source": str(rgb_path),
                 "era5_land_source": str(era5_path),
                 "threshold_csv": str(threshold_csv),
+                "start_hour_utc": start_hour_utc,
+                "end_hour_utc": end_hour_utc,
             },
         )
         out_ds["cloud_binary"].attrs["long_name"] = "cloud mask (0=clear, 1=cloudy)"
@@ -408,6 +426,8 @@ def main() -> int:
             threshold_csv=threshold_csv,
             mask_path=mask_path,
             domain=args.domain,
+            start_hour_utc=args.start_hour_utc,
+            end_hour_utc=args.end_hour_utc,
         )
         print(f"Wrote cloud mask: {mask_path}")
         print(f"ERA5-Land monthly file: {era5_path}")

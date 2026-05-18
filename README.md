@@ -21,6 +21,8 @@ The workflow does six things:
 ├── example_private_env.sh
 ├── docs/
 │   └── pbs_notes.md
+├── notebooks/
+│   └── demo_goes_rgb_mask.ipynb
 ├── scripts/
 │   ├── apply_tempbin_thresholds.py
 │   ├── batch_ortho.py
@@ -53,6 +55,16 @@ If `goes_ortho` has trouble installing on your machine, install the geospatial/c
 conda install -c conda-forge gdal gcc_linux-64 gxx_linux-64
 pip install goes_ortho
 ```
+
+## Demo Notebook
+
+For a guided one-day example, open:
+
+```text
+notebooks/demo_goes_rgb_mask.ipynb
+```
+
+The notebook lets a user set lat/lon bounds, dates, and UTC hours, then runs the full workflow and ends with a side-by-side RGB and cloud-mask plot. The default demo is Colorado on `2020-06-30`.
 
 ## 2. Add Your Own API Keys
 

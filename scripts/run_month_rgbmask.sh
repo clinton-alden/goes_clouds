@@ -21,6 +21,8 @@ GIF_DIR="${GIF_DIR:-${OUTPUT_BASE}/gif_loops_tempbin_10c}"
 LOG_DIR="${LOG_DIR:-${OUTPUT_BASE}/logs}"
 FRAME_DURATION="${FRAME_DURATION:-0.15}"
 SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-0}"
+START_HOUR_UTC="${START_HOUR_UTC:-14}"
+END_HOUR_UTC="${END_HOUR_UTC:-24}"
 
 mkdir -p "${MASK_DIR}" "${GIF_DIR}" "${LOG_DIR}"
 
@@ -40,6 +42,7 @@ echo "RGB_DIR=${RGB_DIR}" | tee -a "${month_log}"
 echo "ERA5_DIR=${ERA5_DIR}" | tee -a "${month_log}"
 echo "MASK_DIR=${MASK_DIR}" | tee -a "${month_log}"
 echo "GIF_DIR=${GIF_DIR}" | tee -a "${month_log}"
+echo "MASK WINDOW UTC=${START_HOUR_UTC}-${END_HOUR_UTC}" | tee -a "${month_log}"
 
 for day in $(seq 1 "${days_in_month}"); do
   date_str="$(printf '%04d%02d%02d' "${YEAR}" "${month_num}" "${day}")"
@@ -59,6 +62,8 @@ for day in $(seq 1 "${days_in_month}"); do
     --gif-dir "${GIF_DIR}"
     --frame-duration "${FRAME_DURATION}"
     --domain "${DOMAIN}"
+    --start-hour-utc "${START_HOUR_UTC}"
+    --end-hour-utc "${END_HOUR_UTC}"
     --overwrite
   )
   if [[ "${SKIP_DOWNLOAD}" == "1" ]]; then

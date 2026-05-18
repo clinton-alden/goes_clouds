@@ -17,5 +17,7 @@ export RGB_DIR="${RGB_DIR:?RGB_DIR is required}"
 export ERA5_DIR="${ERA5_DIR:?ERA5_DIR is required}"
 export OUTPUT_BASE="${OUTPUT_BASE:?OUTPUT_BASE is required}"
 export THRESHOLD_CSV="${THRESHOLD_CSV:-$PWD/thresholds/gothic_temp_bin_rgb_thresholds_10c.csv}"
+export START_HOUR_UTC="${START_HOUR_UTC:-14}"
+export END_HOUR_UTC="${END_HOUR_UTC:-24}"
 
 ./scripts/run_month_rgbmask.sh
