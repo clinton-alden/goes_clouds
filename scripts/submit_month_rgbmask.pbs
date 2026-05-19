@@ -17,7 +17,10 @@ export RGB_DIR="${RGB_DIR:?RGB_DIR is required}"
 export ERA5_DIR="${ERA5_DIR:?ERA5_DIR is required}"
 export OUTPUT_BASE="${OUTPUT_BASE:?OUTPUT_BASE is required}"
 export THRESHOLD_CSV="${THRESHOLD_CSV:-$PWD/thresholds/gothic_temp_bin_rgb_thresholds_10c.csv}"
-export START_HOUR_UTC="${START_HOUR_UTC:-14}"
-export END_HOUR_UTC="${END_HOUR_UTC:-24}"
+export GOES_HOURS="${GOES_HOURS:-14-23}"
+export LON_MIN="${LON_MIN:?LON_MIN is required}"
+export LAT_MIN="${LAT_MIN:?LAT_MIN is required}"
+export LON_MAX="${LON_MAX:?LON_MAX is required}"
+export LAT_MAX="${LAT_MAX:?LAT_MAX is required}"
 
 ./scripts/run_month_rgbmask.sh

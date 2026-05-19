@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply temperature-bin RGB thresholds to a GOES RGB file using ERA5-Land."""
+"""Apply the GOES VINTAGE mask to a GOES RGB file using ERA5-Land."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Download ERA5-Land 2m air temperature for the RGB domain if needed, "
-            "apply temperature-selected RGB thresholds, and render a binary mask GIF."
+            "apply the GOES VINTAGE mask, and render a VINTAGE mask GIF."
         )
     )
     parser.add_argument(
@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--threshold-csv",
         default="thresholds/gothic_temp_bin_rgb_thresholds_10c.csv",
-        help="CSV containing the temperature-bin RGB thresholds",
+        help="CSV containing the VINTAGE temperature-bin RGB thresholds",
     )
     parser.add_argument(
         "--era5-dir",
@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mask-dir",
         required=True,
-        help="Directory for output binary mask NetCDF files",
+        help="Directory for output GOES VINTAGE mask NetCDF files",
     )
     parser.add_argument(
         "--gif-dir",
@@ -58,7 +58,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--domain",
         default="domain",
-        help="Domain label used in ERA5 output filenames and metadata",
+        help="Output label used in ERA5 output filenames and metadata",
+    )
+    parser.add_argument(
+        "--lon-min",
+        type=float,
+        help="Western longitude bound for ERA5 download",
+    )
+    parser.add_argument(
+        "--lat-min",
+        type=float,
+        help="Southern latitude bound for ERA5 download",
+    )
+    parser.add_argument(
+        "--lon-max",
+        type=float,
+        help="Eastern longitude bound for ERA5 download",
+    )
+    parser.add_argument(
+        "--lat-max",
+        type=float,
+        help="Northern latitude bound for ERA5 download",
     )
     parser.add_argument(
         "--overwrite",
@@ -94,6 +114,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=END_HOUR_UTC,
         help="Exclusive ending UTC hour to include in the output mask, e.g. 24",
     )
+    parser.add_argument(
+        "--keep-diagnostics",
+        action="store_true",
+        help=(
+            "Store per-pixel ERA5 temperature and threshold-bin diagnostics in the "
+            "mask NetCDF. By default, only the compact VINTAGE mask product and "
+            "small summary variables are written."
+        ),
+    )
     return parser
 
 
@@ -108,8 +137,8 @@ def load_thresholds(path: Path) -> pd.DataFrame:
 
 def infer_output_paths(rgb_path: Path, mask_dir: Path, gif_dir: Path) -> tuple[Path, Path]:
     stem = rgb_path.stem
-    mask_path = mask_dir / f"{stem}_cloud_binary_tempbin10c.nc"
-    gif_path = gif_dir / f"{stem}_cloud_binary_tempbin10c.gif"
+    mask_path = mask_dir / f"{stem}_vintage_mask.nc"
+    gif_path = gif_dir / f"{stem}_vintage_mask.gif"
     return mask_path, gif_path
 
 
@@ -131,6 +160,21 @@ def derive_bounds(ds: xr.Dataset, padding_deg: float = 0.0) -> list[float]:
     ]
 
 
+def era5_area_from_lonlat_bounds(
+    lon_min: float,
+    lat_min: float,
+    lon_max: float,
+    lat_max: float,
+    padding_deg: float = 0.0,
+) -> list[float]:
+    return [
+        float(lat_max + padding_deg),
+        float(lon_min - padding_deg),
+        float(lat_min - padding_deg),
+        float(lon_max + padding_deg),
+    ]
+
+
 def ensure_era5_land_month(
     rgb_path: Path,
     era5_dir: Path,
@@ -138,6 +182,7 @@ def ensure_era5_land_month(
     overwrite_download: bool,
     skip_download: bool,
     padding_deg: float,
+    area: list[float] | None = None,
 ) -> Path:
     year, month, _ = parse_rgb_date(rgb_path)
     out_path = era5_dir / f"era5land_t2m_{domain}_{year}{month:02d}.nc"
@@ -155,8 +200,9 @@ def ensure_era5_land_month(
 
     era5_dir.mkdir(parents=True, exist_ok=True)
 
-    with xr.open_dataset(rgb_path) as ds:
-        area = derive_bounds(ds, padding_deg=padding_deg)
+    if area is None:
+        with xr.open_dataset(rgb_path) as ds:
+            area = derive_bounds(ds, padding_deg=padding_deg)
 
     days = [f"{day:02d}" for day in range(1, 32)]
     hours = [f"{hour:02d}:00" for hour in range(24)]
@@ -207,8 +253,19 @@ def select_target_hours(ds: xr.Dataset, start_hour_utc: float, end_hour_utc: flo
     hour_float = times.hour + times.minute / 60.0 + times.second / 3600.0
     keep = (hour_float >= start_hour_utc) & (hour_float < end_hour_utc)
     if not np.any(keep):
+        expanded_start = max(0.0, start_hour_utc - 1.0)
+        expanded_end = min(24.0, end_hour_utc + 1.0)
+        keep = (hour_float >= expanded_start) & (hour_float < expanded_end)
+        if np.any(keep):
+            print(
+                f"No GOES timesteps found in {start_hour_utc:g}Z-{end_hour_utc:g}Z; "
+                f"using nearby {expanded_start:g}Z-{expanded_end:g}Z timesteps instead."
+            )
+            return ds.isel(t=np.where(keep)[0])
+        available = ", ".join(pd.Timestamp(t).strftime("%H:%M:%S") for t in times)
         raise ValueError(
-            f"No GOES timesteps found in the requested {start_hour_utc:g}Z-{end_hour_utc:g}Z window"
+            f"No GOES timesteps found in the requested {start_hour_utc:g}Z-{end_hour_utc:g}Z "
+            f"window. Available UTC times: {available}"
         )
     return ds.isel(t=np.where(keep)[0])
 
@@ -254,7 +311,7 @@ def interpolate_temp_to_goes_grid(
     return temp_on_goes.rename({era5_time_name: "t"}) if era5_time_name in temp_on_goes.dims else temp_on_goes
 
 
-def build_cloud_mask(
+def build_vintage_mask(
     rgb_path: Path,
     era5_path: Path,
     threshold_csv: Path,
@@ -262,6 +319,7 @@ def build_cloud_mask(
     domain: str,
     start_hour_utc: float,
     end_hour_utc: float,
+    keep_diagnostics: bool = False,
 ) -> tuple[pd.DataFrame, pd.Series]:
     thresholds = load_thresholds(threshold_csv)
     t2m_field = load_era5_temp_field(era5_path)
@@ -286,7 +344,7 @@ def build_cloud_mask(
         red = np.asarray(ds["red"].values, dtype=np.float32)
         green = np.asarray(ds["green"].values, dtype=np.float32)
         blue = np.asarray(ds["blue"].values, dtype=np.float32)
-        cloud_mask = np.zeros(red.shape, dtype=np.uint8)
+        vintage_mask = np.zeros(red.shape, dtype=np.uint8)
 
         for idx in np.unique(bin_idx):
             row = thresholds.iloc[int(idx)]
@@ -298,49 +356,86 @@ def build_cloud_mask(
             c3 = band_condition(
                 blue[sel], float(row["blue_threshold"]), str(row["blue_direction"])
             )
-            cloud_mask[sel] = apply_rule(c1, c2, c3, str(row["rule"])).astype(np.uint8)
+            vintage_mask[sel] = apply_rule(c1, c2, c3, str(row["rule"])).astype(np.uint8)
+
+        data_vars = {
+            "vintage_mask": (("t", "latitude", "longitude"), vintage_mask),
+            "air_temp_domain_mean_c": (
+                ("t",),
+                temp_values.mean(axis=(1, 2)).astype(np.float32),
+            ),
+        }
+        if keep_diagnostics:
+            data_vars.update(
+                {
+                    "air_temp_c": (
+                        ("t", "latitude", "longitude"),
+                        temp_values.astype(np.float32),
+                    ),
+                    "temp_bin_index": (
+                        ("t", "latitude", "longitude"),
+                        bin_idx.astype(np.int16),
+                    ),
+                }
+            )
 
         out_ds = xr.Dataset(
-            data_vars={
-                "cloud_binary": (("t", "latitude", "longitude"), cloud_mask),
-                "air_temp_c": (("t", "latitude", "longitude"), temp_values.astype(np.float32)),
-                "air_temp_domain_mean_c": (
-                    ("t",),
-                    temp_values.mean(axis=(1, 2)).astype(np.float32),
-                ),
-                "temp_bin_index": (("t", "latitude", "longitude"), bin_idx.astype(np.int16)),
-            },
+            data_vars=data_vars,
             coords={
                 "t": ds["t"],
                 "latitude": ds["latitude"],
                 "longitude": ds["longitude"],
             },
             attrs={
-                "title": f"{domain} cloud mask from RGB temperature-bin thresholds",
+                "title": f"{domain} GOES VINTAGE mask",
                 "rgb_source": str(rgb_path),
                 "era5_land_source": str(era5_path),
                 "threshold_csv": str(threshold_csv),
                 "start_hour_utc": start_hour_utc,
                 "end_hour_utc": end_hour_utc,
+                "keep_diagnostics": int(keep_diagnostics),
             },
         )
-        out_ds["cloud_binary"].attrs["long_name"] = "cloud mask (0=clear, 1=cloudy)"
-        out_ds["air_temp_c"].attrs["long_name"] = "ERA5-Land 2m air temperature interpolated to GOES grid"
-        out_ds["air_temp_c"].attrs["units"] = "degC"
+        out_ds["vintage_mask"].attrs["long_name"] = "GOES VINTAGE mask (0=clear, 1=cloudy)"
         out_ds["air_temp_domain_mean_c"].attrs["long_name"] = (
             "domain-mean ERA5-Land 2m air temperature after interpolation to GOES grid"
         )
         out_ds["air_temp_domain_mean_c"].attrs["units"] = "degC"
-        out_ds["temp_bin_index"].attrs["long_name"] = (
-            "row index in threshold CSV used per pixel and timestep"
-        )
+        if keep_diagnostics:
+            out_ds["air_temp_c"].attrs["long_name"] = (
+                "ERA5-Land 2m air temperature interpolated to GOES grid"
+            )
+            out_ds["air_temp_c"].attrs["units"] = "degC"
+            out_ds["temp_bin_index"].attrs["long_name"] = (
+                "row index in threshold CSV used per pixel and timestep"
+            )
 
         encoding = {
-            "cloud_binary": {"zlib": True, "complevel": 4, "dtype": "uint8"},
-            "air_temp_c": {"zlib": True, "complevel": 4, "dtype": "float32"},
-            "air_temp_domain_mean_c": {"zlib": True, "complevel": 4, "dtype": "float32"},
-            "temp_bin_index": {"zlib": True, "complevel": 4, "dtype": "int16"},
+            "vintage_mask": {"zlib": True, "complevel": 9, "shuffle": True, "dtype": "uint8"},
+            "air_temp_domain_mean_c": {
+                "zlib": True,
+                "complevel": 9,
+                "shuffle": True,
+                "dtype": "float32",
+            },
         }
+        if keep_diagnostics:
+            encoding.update(
+                {
+                    "air_temp_c": {
+                        "zlib": True,
+                        "complevel": 9,
+                        "shuffle": True,
+                        "dtype": "float32",
+                    },
+                    "temp_bin_index": {
+                        "zlib": True,
+                        "complevel": 9,
+                        "shuffle": True,
+                        "dtype": "int16",
+                    },
+                }
+            )
         out_ds.to_netcdf(mask_path, encoding=encoding)
         out_ds.close()
 
@@ -360,7 +455,7 @@ def render_gif(mask_path: Path, gif_path: Path, frame_duration: float) -> None:
     frame_paths: list[Path] = []
     cloud_cmap = ListedColormap(["#2563eb", "#ffffff"])
     with xr.open_dataset(mask_path) as ds:
-        mask = ds["cloud_binary"].values
+        mask = ds["vintage_mask"].values
         times = pd.to_datetime(ds["t"].values)
         lon = np.asarray(ds["longitude"].values, dtype=float)
         lat = np.asarray(ds["latitude"].values, dtype=float)
@@ -378,7 +473,7 @@ def render_gif(mask_path: Path, gif_path: Path, frame_duration: float) -> None:
                 interpolation="nearest",
                 aspect="auto",
             )
-            ax.set_title(f"RGB Cloud Mask\n{timestamp.strftime('%Y-%m-%d %H:%M UTC')}")
+            ax.set_title(f"GOES VINTAGE Mask\n{timestamp.strftime('%Y-%m-%d %H:%M UTC')}")
             ax.set_xlabel("Longitude")
             ax.set_ylabel("Latitude")
 
@@ -410,6 +505,24 @@ def main() -> int:
     mask_dir.mkdir(parents=True, exist_ok=True)
     gif_dir.mkdir(parents=True, exist_ok=True)
     mask_path, gif_path = infer_output_paths(rgb_path, mask_dir, gif_dir)
+    bounds_values = [args.lon_min, args.lat_min, args.lon_max, args.lat_max]
+    if any(value is not None for value in bounds_values) and not all(
+        value is not None for value in bounds_values
+    ):
+        raise ValueError(
+            "--lon-min, --lat-min, --lon-max, and --lat-max must be provided together"
+        )
+    era5_area = (
+        era5_area_from_lonlat_bounds(
+            args.lon_min,
+            args.lat_min,
+            args.lon_max,
+            args.lat_max,
+            padding_deg=args.era5_padding_deg,
+        )
+        if all(value is not None for value in bounds_values)
+        else None
+    )
 
     if args.overwrite or not mask_path.exists():
         era5_path = ensure_era5_land_month(
@@ -419,8 +532,9 @@ def main() -> int:
             overwrite_download=False,
             skip_download=args.skip_download,
             padding_deg=args.era5_padding_deg,
+            area=era5_area,
         )
-        thresholds, temp_at_goes = build_cloud_mask(
+        thresholds, temp_at_goes = build_vintage_mask(
             rgb_path=rgb_path,
             era5_path=era5_path,
             threshold_csv=threshold_csv,
@@ -428,15 +542,16 @@ def main() -> int:
             domain=args.domain,
             start_hour_utc=args.start_hour_utc,
             end_hour_utc=args.end_hour_utc,
+            keep_diagnostics=args.keep_diagnostics,
         )
-        print(f"Wrote cloud mask: {mask_path}")
+        print(f"Wrote VINTAGE mask: {mask_path}")
         print(f"ERA5-Land monthly file: {era5_path}")
         print(
             "Applied temperature bins: "
             + ", ".join(thresholds["temp_bin"].astype(str).tolist())
         )
     else:
-        print(f"Cloud mask exists, reusing: {mask_path}")
+        print(f"VINTAGE mask exists, reusing: {mask_path}")
 
     if args.overwrite or not gif_path.exists():
         render_gif(mask_path=mask_path, gif_path=gif_path, frame_duration=args.frame_duration)

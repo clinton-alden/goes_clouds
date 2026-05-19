@@ -62,7 +62,7 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
         If True, print fun messages during processing.
 
     Example usage:
-    >>> goes_nc_to_zarr('/storage/cdalden/goes/washington/', ['C13', 'C02', 'C05'], 
+    >>> goes_nc_to_zarr('/path/to/goes/washington/', ['C13', 'C02', 'C05'],
                          1, 2, 8, 2022, 'washington', 'goes17')
     """ 
 
@@ -110,7 +110,7 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
             nc_files = []
             for root, dirs, files in os.walk(nc_dir):
                 for file in files:
-                    if file.endswith('.nc') and channel in file:
+                    if file.endswith('_ortho.nc') and channel in file:
                         nc_files.append(os.path.join(root, file))
 
             # Open multiple NetCDF files as a list of datasets
@@ -124,8 +124,9 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
             except Exception as e:
                 print(f"Warning: could not drop variables 'dem_px_angle_x' and 'dem_px_angle_y': {e}")
 
-            # Save the combined dataset to a Zarr file
-            combined_ds.to_zarr(os.path.join(out_dir, out_name))
+            # Save the combined dataset to a Zarr file. Use mode="w" so demo
+            # notebooks and reruns replace the per-day store cleanly.
+            combined_ds.to_zarr(os.path.join(out_dir, out_name), mode="w")
 
             # Force garbage collection to free memory
             gc.collect()
@@ -487,9 +488,9 @@ def create_gif_from_pngs(png_dir, output_gif):
     imageio.mimsave(output_gif, images, duration=0.1)  # Adjust the duration as needed
 
 
-def cloud_mask(ds):
+def vintage_mask(ds):
     """
-    Create a "cloud" mask based on RGB channel thresholds.
+    Create a GOES VINTAGE-style mask based on RGB channel thresholds.
     
     Cloud detection criteria:
     - green > 0.4 AND blue > 0.4 AND red > 0.4
@@ -506,7 +507,7 @@ def cloud_mask(ds):
     Returns
     -------
     ds_masked : xarray.Dataset
-        Dataset with cloud mask applied
+        Dataset with the GOES VINTAGE-style mask applied
     """
 
     green = ds['green'].values
@@ -538,12 +539,12 @@ def make_gif(ds, date, start_time, end_time, mask=False):
     end_time : str
         The end time in 'HHMM' format
     mask : bool
-        Whether to apply a cloud mask
+        Whether to apply the GOES VINTAGE-style mask
     """
 
     if mask:
-        print('Applying cloud mask...')
-        ds = cloud_mask(ds)
+        print('Applying GOES VINTAGE-style mask...')
+        ds = vintage_mask(ds)
 
     start_time = datetime.strptime(f"{date}T{start_time}00", '%Y%m%dT%H%M%S')
     end_time = datetime.strptime(f"{date}T{end_time}00", '%Y%m%dT%H%M%S')

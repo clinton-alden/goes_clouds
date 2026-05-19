@@ -230,6 +230,9 @@ for d in range(len(days)):
         ):  # we have to make sure the path exists (meaning we downloaded something) before running the subsetNetCDF function
             print("\nSubsetting files in...{}".format(filepath[i]))
             for file in glob(filepath[i] + "*.nc"):
+                if file.endswith("_ortho.nc"):
+                    print(f"Skipping already orthorectified file: {file}")
+                    continue
                 subsetNetCDF(file, bounds)
         i += 1
 

@@ -3,7 +3,7 @@
 This branch includes two generic PBS templates:
 
 - `scripts/submit_month_goes_rgb.pbs` runs GOES download, orthorectification, Zarr conversion, and RGB generation for one month.
-- `scripts/submit_month_rgbmask.pbs` applies the ERA5-Land temperature-bin RGB cloud mask for one month.
+- `scripts/submit_month_rgbmask.pbs` applies the GOES VINTAGE mask for one month.
 
 Before submitting, adapt the PBS account, queue, walltime, CPU, and memory directives to your institution. The templates intentionally avoid hard-coded account names and private filesystem paths.
 

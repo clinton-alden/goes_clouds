@@ -16,13 +16,17 @@ RGB_DIR="${RGB_DIR:?RGB_DIR is required}"
 THRESHOLD_CSV="${THRESHOLD_CSV:-${REPO_DIR}/thresholds/gothic_temp_bin_rgb_thresholds_10c.csv}"
 ERA5_DIR="${ERA5_DIR:?ERA5_DIR is required}"
 OUTPUT_BASE="${OUTPUT_BASE:?OUTPUT_BASE is required}"
-MASK_DIR="${MASK_DIR:-${OUTPUT_BASE}/cloud_mask_tempbin_10c}"
-GIF_DIR="${GIF_DIR:-${OUTPUT_BASE}/gif_loops_tempbin_10c}"
+MASK_DIR="${MASK_DIR:-${OUTPUT_BASE}/vintage_mask}"
+GIF_DIR="${GIF_DIR:-${OUTPUT_BASE}/vintage_gif_loops}"
 LOG_DIR="${LOG_DIR:-${OUTPUT_BASE}/logs}"
 FRAME_DURATION="${FRAME_DURATION:-0.15}"
 SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-0}"
-START_HOUR_UTC="${START_HOUR_UTC:-14}"
-END_HOUR_UTC="${END_HOUR_UTC:-24}"
+KEEP_MASK_DIAGNOSTICS="${KEEP_MASK_DIAGNOSTICS:-0}"
+GOES_HOURS="${GOES_HOURS:-14-23}"
+LON_MIN="${LON_MIN:?LON_MIN is required}"
+LAT_MIN="${LAT_MIN:?LAT_MIN is required}"
+LON_MAX="${LON_MAX:?LON_MAX is required}"
+LAT_MAX="${LAT_MAX:?LAT_MAX is required}"
 
 mkdir -p "${MASK_DIR}" "${GIF_DIR}" "${LOG_DIR}"
 
@@ -36,13 +40,31 @@ print(calendar.monthrange(${YEAR}, ${month_num})[1])
 PY
 )"
 
-echo "=== MONTH RGB MASK CONFIG ===" | tee "${month_log}"
+read -r START_HOUR_UTC END_HOUR_UTC < <("${PYTHON_BIN}" - <<PY
+value = "${GOES_HOURS}".strip()
+if not value:
+    hours = list(range(24))
+elif "-" in value and "," not in value:
+    start, end = (int(part) for part in value.split("-", 1))
+    hours = list(range(start, end + 1))
+else:
+    hours = [int(part) for part in value.split(",") if part.strip()]
+if any(hour < 0 or hour > 23 for hour in hours):
+    raise SystemExit(f"GOES_HOURS values must be between 0 and 23: {value!r}")
+print(min(hours), min(max(hours) + 1, 24))
+PY
+)
+
+echo "=== MONTH VINTAGE MASK CONFIG ===" | tee "${month_log}"
 echo "YEAR=${YEAR} MONTH=${MONTH}" | tee -a "${month_log}"
 echo "RGB_DIR=${RGB_DIR}" | tee -a "${month_log}"
 echo "ERA5_DIR=${ERA5_DIR}" | tee -a "${month_log}"
 echo "MASK_DIR=${MASK_DIR}" | tee -a "${month_log}"
 echo "GIF_DIR=${GIF_DIR}" | tee -a "${month_log}"
+echo "GOES_HOURS=${GOES_HOURS}" | tee -a "${month_log}"
 echo "MASK WINDOW UTC=${START_HOUR_UTC}-${END_HOUR_UTC}" | tee -a "${month_log}"
+echo "KEEP_MASK_DIAGNOSTICS=${KEEP_MASK_DIAGNOSTICS}" | tee -a "${month_log}"
+echo "BOUNDS=${LON_MIN} ${LAT_MIN} ${LON_MAX} ${LAT_MAX}" | tee -a "${month_log}"
 
 for day in $(seq 1 "${days_in_month}"); do
   date_str="$(printf '%04d%02d%02d' "${YEAR}" "${month_num}" "${day}")"
@@ -62,12 +84,19 @@ for day in $(seq 1 "${days_in_month}"); do
     --gif-dir "${GIF_DIR}"
     --frame-duration "${FRAME_DURATION}"
     --domain "${DOMAIN}"
+    --lon-min "${LON_MIN}"
+    --lat-min "${LAT_MIN}"
+    --lon-max "${LON_MAX}"
+    --lat-max "${LAT_MAX}"
     --start-hour-utc "${START_HOUR_UTC}"
     --end-hour-utc "${END_HOUR_UTC}"
     --overwrite
   )
   if [[ "${SKIP_DOWNLOAD}" == "1" ]]; then
     args+=(--skip-download)
+  fi
+  if [[ "${KEEP_MASK_DIAGNOSTICS}" == "1" ]]; then
+    args+=(--keep-diagnostics)
   fi
 
   echo "[build] ${date_str}" | tee -a "${month_log}"
@@ -77,4 +106,4 @@ for day in $(seq 1 "${days_in_month}"); do
   fi
 done
 
-echo "=== MONTH RGB MASK DONE ===" | tee -a "${month_log}"
+echo "=== MONTH VINTAGE MASK DONE ===" | tee -a "${month_log}"

@@ -1,4 +1,4 @@
-"""Small public API for the GOES RGB + ERA5 cloud-mask workflow."""
+"""Small public API for the GOES VINTAGE workflow."""
 
 from __future__ import annotations
 
@@ -29,16 +29,23 @@ class WorkflowConfig:
     base_dir: Path
     goes_hours: str = "20"
     goes_timesteps_per_hour: int | None = None
-    start_hour_utc: float = 14
-    end_hour_utc: float = 24
+    start_hour_utc: float | None = None
+    end_hour_utc: float | None = None
     threshold_csv: Path | None = None
     overwrite_mask: bool = True
+    keep_mask_diagnostics: bool = False
     run: bool = True
 
     def __post_init__(self) -> None:
         self.base_dir = Path(self.base_dir)
         if self.threshold_csv is not None:
             self.threshold_csv = Path(self.threshold_csv)
+        if self.start_hour_utc is None or self.end_hour_utc is None:
+            start_hour, end_hour = _mask_window_from_goes_hours(self.goes_hours)
+            if self.start_hour_utc is None:
+                self.start_hour_utc = start_hour
+            if self.end_hour_utc is None:
+                self.end_hour_utc = end_hour
 
     @property
     def repo_dir(self) -> Path:
@@ -58,11 +65,11 @@ class WorkflowConfig:
 
     @property
     def mask_dir(self) -> Path:
-        return self.base_dir / self.goes / "cloud_mask_tempbin_10c"
+        return self.base_dir / self.goes / "vintage_mask"
 
     @property
     def gif_dir(self) -> Path:
-        return self.base_dir / self.goes / "gif_loops_tempbin_10c"
+        return self.base_dir / self.goes / "vintage_gif_loops"
 
     @property
     def resolved_threshold_csv(self) -> Path:
@@ -83,7 +90,7 @@ class WorkflowConfig:
 
     def mask_path(self, timestamp: pd.Timestamp) -> Path:
         rgb_path = self.rgb_path(timestamp)
-        return self.mask_dir / f"{rgb_path.stem}_cloud_binary_tempbin10c.nc"
+        return self.mask_dir / f"{rgb_path.stem}_vintage_mask.nc"
 
     def env(self) -> dict[str, str]:
         env = os.environ.copy()
@@ -111,9 +118,12 @@ def validate_credentials(config: WorkflowConfig) -> None:
         raise RuntimeError(
             "Set your own OPENTOPOGRAPHY_API_KEY before orthorectifying GOES data."
         )
-    if not (Path.home() / ".cdsapirc").exists():
+    has_cds_env = os.environ.get("CDSAPI_URL") and os.environ.get("CDSAPI_KEY")
+    has_cds_rc = os.environ.get("CDSAPI_RC") or (Path.home() / ".cdsapirc").exists()
+    if not (has_cds_env or has_cds_rc):
         raise RuntimeError(
-            "Missing ~/.cdsapirc. Copy example_cdsapirc to ~/.cdsapirc and add your Copernicus/CDS key."
+            "Missing CDS credentials. Copy example_private_env.sh to private_env.sh, "
+            "set CDSAPI_URL/CDSAPI_KEY, and source it before running."
         )
 
 
@@ -228,12 +238,12 @@ def build_rgb(config: WorkflowConfig) -> list[Path]:
 
 
 def apply_mask(config: WorkflowConfig) -> list[Path]:
-    """Download/reuse ERA5-Land temperature and apply the RGB cloud mask."""
+    """Download/reuse ERA5-Land temperature and apply the GOES VINTAGE mask."""
     mask_script = config.scripts_dir / "apply_tempbin_thresholds.py"
     outputs = []
     for date in tqdm(config.dates, desc="mask", unit="day"):
         rgb_path = config.rgb_path(date)
-        _status(f"Applying cloud mask for {date:%Y-%m-%d}")
+        _status(f"Applying VINTAGE mask for {date:%Y-%m-%d}")
         cmd = [
             sys.executable,
             mask_script,
@@ -249,6 +259,14 @@ def apply_mask(config: WorkflowConfig) -> list[Path]:
             config.gif_dir,
             "--domain",
             config.domain,
+            "--lon-min",
+            config.lon_min,
+            "--lat-min",
+            config.lat_min,
+            "--lon-max",
+            config.lon_max,
+            "--lat-max",
+            config.lat_max,
             "--start-hour-utc",
             config.start_hour_utc,
             "--end-hour-utc",
@@ -256,6 +274,8 @@ def apply_mask(config: WorkflowConfig) -> list[Path]:
         ]
         if config.overwrite_mask:
             cmd.append("--overwrite")
+        if config.keep_mask_diagnostics:
+            cmd.append("--keep-diagnostics")
         _run(cmd, config)
         outputs.append(config.mask_path(date))
     _status("Mask step complete")
@@ -333,6 +353,14 @@ def _parse_goes_hours(goes_hours: str) -> list[int]:
     if any(hour < 0 or hour > 23 for hour in hours):
         raise ValueError(f"GOES_HOURS values must be between 0 and 23, got {goes_hours!r}")
     return hours
+
+
+def _mask_window_from_goes_hours(goes_hours: str) -> tuple[float, float]:
+    """Use the downloaded GOES hour range as the mask time window."""
+    hours = _parse_goes_hours(goes_hours)
+    if not hours:
+        return 0.0, 24.0
+    return float(min(hours)), float(min(max(hours) + 1, 24))
 
 
 def _count_pending_ortho_inputs(month_dir: Path) -> int:

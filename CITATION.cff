@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this workflow or the GOES VINTAGE mask product, please cite it using the metadata below."
+title: "GOES Visible-Infrared-Near-infrared Thresholding AlGorithm for cloud Evolution (VINTAGE)"
+type: software
+authors:
+  - family-names: Alden
+    given-names: Clinton
+  - family-names: Gutmann
+    given-names: Ethan
+  - family-names: Pestana
+    given-names: Steven
+  - family-names: Lundquist
+    given-names: Jessica
+license: MIT
+date-released: 2026-05-19
+repository-code: "https://github.com/clinton-alden/goes_clouds/tree/deployed"
+abstract: "Public workflow for generating GOES Day Cloud Phase RGB files and applying the ERA5-Land-temperature-dependent GOES VINTAGE mask."
