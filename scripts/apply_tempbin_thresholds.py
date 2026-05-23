@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 import shutil
 
 import imageio.v2 as imageio
@@ -21,6 +22,8 @@ import xarray as xr
 START_HOUR_UTC = 14
 END_HOUR_UTC = 24
 DEFAULT_ERA5_PADDING_DEG = 0.2
+DEFAULT_THRESHOLD_CSV = "thresholds/gothic_vintage_rgb_tree_rules_5c_sw_kt050_090.csv"
+TREE_RULE_RE = re.compile(r"(red|green|blue)\s*(<=|>)\s*([-+0-9.eE]+)")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,8 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--threshold-csv",
-        default="thresholds/gothic_temp_bin_rgb_thresholds_10c.csv",
-        help="CSV containing the VINTAGE temperature-bin RGB thresholds",
+        default=DEFAULT_THRESHOLD_CSV,
+        help="CSV containing the VINTAGE temperature-bin RGB decision-tree rules",
     )
     parser.add_argument(
         "--era5-dir",
@@ -119,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Store per-pixel ERA5 temperature and threshold-bin diagnostics in the "
-            "mask NetCDF. By default, only the compact VINTAGE mask product and "
+            "mask NetCDF. By default, only the compact VINTAGE mask output and "
             "small summary variables are written."
         ),
     )
@@ -133,6 +136,19 @@ def load_thresholds(path: Path) -> pd.DataFrame:
     if thresholds.empty:
         raise ValueError(f"No trained thresholds found in {path}")
     return thresholds
+
+
+def is_tree_rule_table(thresholds: pd.DataFrame) -> bool:
+    return {"rule", "prediction", "prediction_label"}.issubset(thresholds.columns)
+
+
+def threshold_bin_table(thresholds: pd.DataFrame) -> pd.DataFrame:
+    return (
+        thresholds[["temp_bin", "temp_left_c", "temp_right_c"]]
+        .drop_duplicates()
+        .sort_values("temp_left_c")
+        .reset_index(drop=True)
+    )
 
 
 def infer_output_paths(rgb_path: Path, mask_dir: Path, gif_dir: Path) -> tuple[Path, Path]:
@@ -288,6 +304,44 @@ def apply_rule(c1: np.ndarray, c2: np.ndarray, c3: np.ndarray, rule: str) -> np.
     raise ValueError(f"Unsupported combine rule: {rule}")
 
 
+def evaluate_tree_rule(values: dict[str, np.ndarray], rule: str) -> np.ndarray:
+    if rule == "always":
+        return np.ones_like(values["red"], dtype=bool)
+
+    out = np.ones_like(values["red"], dtype=bool)
+    matches = TREE_RULE_RE.findall(rule)
+    if not matches:
+        raise ValueError(f"Could not parse decision-tree rule: {rule!r}")
+    for feature, op, threshold in matches:
+        threshold_value = float(threshold)
+        if op == "<=":
+            out &= values[feature] <= threshold_value
+        elif op == ">":
+            out &= values[feature] > threshold_value
+        else:
+            raise ValueError(f"Unsupported decision-tree operator in rule: {rule!r}")
+    return out
+
+
+def apply_tree_rules(
+    red: np.ndarray,
+    green: np.ndarray,
+    blue: np.ndarray,
+    rules: pd.DataFrame,
+) -> np.ndarray:
+    cloud = np.zeros_like(red, dtype=bool)
+    cloudy_rules = rules.loc[
+        rules["prediction"].astype(int).eq(1) | rules["prediction_label"].astype(str).eq("cloudy")
+    ]
+    if cloudy_rules.empty:
+        return cloud
+
+    values = {"red": red, "green": green, "blue": blue}
+    for rule in cloudy_rules["rule"].astype(str):
+        cloud |= evaluate_tree_rule(values, rule)
+    return cloud
+
+
 def interpolate_temp_to_goes_grid(
     t2m_field: xr.DataArray,
     goes_times: pd.DatetimeIndex,
@@ -322,6 +376,8 @@ def build_vintage_mask(
     keep_diagnostics: bool = False,
 ) -> tuple[pd.DataFrame, pd.Series]:
     thresholds = load_thresholds(threshold_csv)
+    bins = threshold_bin_table(thresholds)
+    tree_rule_table = is_tree_rule_table(thresholds)
     t2m_field = load_era5_temp_field(era5_path)
 
     with xr.open_dataset(rgb_path) as ds:
@@ -336,8 +392,8 @@ def build_vintage_mask(
             goes_lon=goes_lon,
         )
 
-        left_edges = thresholds["temp_left_c"].to_numpy()
-        right_edges = thresholds["temp_right_c"].to_numpy()
+        left_edges = bins["temp_left_c"].to_numpy()
+        right_edges = bins["temp_right_c"].to_numpy()
         temp_values = np.asarray(temp_at_goes.values, dtype=np.float32)
         bin_idx = choose_bin(temp_values.astype(float), left_edges, right_edges)
 
@@ -347,16 +403,39 @@ def build_vintage_mask(
         vintage_mask = np.zeros(red.shape, dtype=np.uint8)
 
         for idx in np.unique(bin_idx):
-            row = thresholds.iloc[int(idx)]
+            row = bins.iloc[int(idx)]
             sel = bin_idx == idx
-            c1 = band_condition(red[sel], float(row["red_threshold"]), str(row["red_direction"]))
-            c2 = band_condition(
-                green[sel], float(row["green_threshold"]), str(row["green_direction"])
-            )
-            c3 = band_condition(
-                blue[sel], float(row["blue_threshold"]), str(row["blue_direction"])
-            )
-            vintage_mask[sel] = apply_rule(c1, c2, c3, str(row["rule"])).astype(np.uint8)
+            if tree_rule_table:
+                bin_rules = thresholds.loc[
+                    thresholds["temp_left_c"].eq(row["temp_left_c"])
+                    & thresholds["temp_right_c"].eq(row["temp_right_c"])
+                ]
+                vintage_mask[sel] = apply_tree_rules(
+                    red[sel], green[sel], blue[sel], bin_rules
+                ).astype(np.uint8)
+            else:
+                threshold_row = thresholds.loc[
+                    thresholds["temp_left_c"].eq(row["temp_left_c"])
+                    & thresholds["temp_right_c"].eq(row["temp_right_c"])
+                ].iloc[0]
+                c1 = band_condition(
+                    red[sel],
+                    float(threshold_row["red_threshold"]),
+                    str(threshold_row["red_direction"]),
+                )
+                c2 = band_condition(
+                    green[sel],
+                    float(threshold_row["green_threshold"]),
+                    str(threshold_row["green_direction"]),
+                )
+                c3 = band_condition(
+                    blue[sel],
+                    float(threshold_row["blue_threshold"]),
+                    str(threshold_row["blue_direction"]),
+                )
+                vintage_mask[sel] = apply_rule(c1, c2, c3, str(threshold_row["rule"])).astype(
+                    np.uint8
+                )
 
         data_vars = {
             "vintage_mask": (("t", "latitude", "longitude"), vintage_mask),
@@ -407,7 +486,7 @@ def build_vintage_mask(
             )
             out_ds["air_temp_c"].attrs["units"] = "degC"
             out_ds["temp_bin_index"].attrs["long_name"] = (
-                "row index in threshold CSV used per pixel and timestep"
+                "row index in unique temperature-bin table used per pixel and timestep"
             )
 
         encoding = {
@@ -440,7 +519,7 @@ def build_vintage_mask(
         out_ds.close()
 
     applied_bins = np.unique(bin_idx)
-    return thresholds.iloc[applied_bins].copy(), pd.Series(
+    return bins.iloc[applied_bins].copy(), pd.Series(
         temp_values.mean(axis=(1, 2)),
         index=goes_times,
     )

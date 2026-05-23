@@ -46,7 +46,7 @@ GOES_HOURS="${GOES_HOURS:-20}"
 GOES_TIMESTEPS_PER_HOUR="${GOES_TIMESTEPS_PER_HOUR:-1}"
 
 BASE_DIR="${BASE_DIR:-${REPO_DIR}/demo_output/${DOMAIN}}"
-THRESHOLD_CSV="${THRESHOLD_CSV:-${REPO_DIR}/thresholds/gothic_temp_bin_rgb_thresholds_10c.csv}"
+THRESHOLD_CSV="${THRESHOLD_CSV:-${REPO_DIR}/thresholds/gothic_vintage_rgb_tree_rules_5c_sw_kt050_090.csv}"
 
 # Set RUN_WORKFLOW=0 to print the workflow config and skip downloads/processing.
 RUN_WORKFLOW="${RUN_WORKFLOW:-1}"

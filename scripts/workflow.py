@@ -75,7 +75,7 @@ class WorkflowConfig:
     def resolved_threshold_csv(self) -> Path:
         if self.threshold_csv is not None:
             return self.threshold_csv
-        return self.repo_dir / "thresholds" / "gothic_temp_bin_rgb_thresholds_10c.csv"
+        return self.repo_dir / "thresholds" / "gothic_vintage_rgb_tree_rules_5c_sw_kt050_090.csv"
 
     @property
     def dates(self) -> pd.DatetimeIndex:

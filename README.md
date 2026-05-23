@@ -1,6 +1,6 @@
 # GOES Visible-Infrared-Near infrared Threshold AlGorithm for cloud Evolution (VINTAGE) Workflow
 
-This branch is a standalone, public workflow for generating GOES Day Cloud Phase RGB files and applying the ERA5-Land-temperature-dependent GOES VINTAGE mask. It intentionally excludes the private analysis notebooks, experiments, and site-specific test code from the research repository.
+This branch is a standalone workflow for generating GOES Day Cloud Phase RGB files and applying the ERA5-Land-temperature-dependent GOES VINTAGE mask. It intentionally excludes the private analysis notebooks, experiments, and site-specific test code from the research repository.
 
 The workflow does six things:
 
@@ -16,8 +16,6 @@ The workflow does six things:
 ```text
 .
 ├── README.md
-├── CITATION.cff
-├── LICENSE
 ├── environment.yml
 ├── example_cdsapirc
 ├── example_private_env.sh
@@ -37,7 +35,7 @@ The workflow does six things:
 │   ├── utils.py
 │   └── zarr_v2_days.py
 └── thresholds/
-    └── gothic_temp_bin_rgb_thresholds_10c.csv
+    └── gothic_vintage_rgb_tree_rules_5c_sw_kt050_090.csv
 ```
 
 ## 1. Create The Environment
@@ -79,14 +77,6 @@ wf.build_zarr(config)
 wf.build_rgb(config)
 wf.apply_mask(config)
 ```
-
-## Citation And License
-
-If you use this workflow or the GOES VINTAGE mask product, please cite:
-
-> Alden, C., Gutmann, E., Pestana, S., & Lundquist, J. GOES Visible-Infrared-Near-infrared Thresholding AlGorithm for cloud Evolution (VINTAGE). Software.
-
-Citation metadata is provided in `CITATION.cff`. The code is released under the MIT License; see `LICENSE`.
 
 These functions show compact progress bars and suppress noisy command output unless something fails.
 
@@ -135,15 +125,6 @@ export CDSAPI_URL="https://cds.climate.copernicus.eu/api"
 export CDSAPI_KEY="<your-cds-api-key>"
 ```
 
-Alternatively, ERA5-Land downloads can use the standard CDS config file:
-
-```bash
-cp example_cdsapirc ~/.cdsapirc
-chmod 600 ~/.cdsapirc
-```
-
-Then edit `~/.cdsapirc` with your real key. Do not commit real API keys to GitHub.
-
 ## 3. Configure Your Output Label And Bounds
 
 The examples below use a Colorado output label and bounding box, but the same workflow works for any region where GOES ABI CONUS imagery and DEM coverage are appropriate. `DOMAIN` is only used as an output filename suffix; `LON_MIN`, `LAT_MIN`, `LON_MAX`, and `LAT_MAX` define the actual processing area.
@@ -176,7 +157,7 @@ Expected RGB output:
 ${BASE_DIR}/${GOES}/rgb_composite/${GOES}_C02_C05_C13_rgb_${DOMAIN}_YYYYMMDD.nc
 ```
 
-To submit with PBS, pass the same variables through `qsub`. Adapt account/queue directives in the PBS file for your institution:
+To submit with PBS, pass the same variables through `qsub`.  account/queue directives in the PBS file for your institution:
 
 ```bash
 qsub \
@@ -191,7 +172,7 @@ For one RGB file, let the VINTAGE-mask script download ERA5-Land automatically:
 ```bash
 python scripts/apply_tempbin_thresholds.py \
   --rgb-file "${BASE_DIR}/${GOES}/rgb_composite/${GOES}_C02_C05_C13_rgb_${DOMAIN}_20220325.nc" \
-  --threshold-csv thresholds/gothic_temp_bin_rgb_thresholds_10c.csv \
+  --threshold-csv thresholds/gothic_vintage_rgb_tree_rules_5c_sw_kt050_090.csv \
   --era5-dir "${BASE_DIR}/era5_land/t2m_hourly" \
   --mask-dir "${BASE_DIR}/${GOES}/vintage_mask" \
   --gif-dir "${BASE_DIR}/${GOES}/vintage_gif_loops" \
@@ -215,7 +196,7 @@ Expected VINTAGE-mask output:
 ${BASE_DIR}/${GOES}/vintage_mask/${GOES}_C02_C05_C13_rgb_${DOMAIN}_YYYYMMDD_vintage_mask.nc
 ```
 
-The default NetCDF is the compact product. Add `--keep-diagnostics` to store
+The default NetCDF stores the compact binary mask. Add `--keep-diagnostics` to store
 per-pixel ERA5 temperature and threshold-bin arrays for debugging or method
 development.
 
@@ -256,5 +237,5 @@ test -n "${OPENTOPOGRAPHY_API_KEY}" || echo "Set OPENTOPOGRAPHY_API_KEY before o
 
 - `C02`, `C05`, and `C13` are required for the GOES VINTAGE method.
 - `GOES_HOURS=14-23` keeps daytime imagery for western U.S. examples. Change this for other longitudes/seasons; the RGB mask is intended for daylight imagery only.
-- `thresholds/gothic_temp_bin_rgb_thresholds_10c.csv` contains trained RGB thresholds from the original research workflow. Treat it as a starting point and validate/retrain for different regions, seasons, land covers, or snow conditions.
+- `thresholds/gothic_vintage_rgb_tree_rules_5c_sw_kt050_090.csv` contains the current default Gothic VINTAGE RGB decision-tree rules trained from SW-derived cloud labels using `k_t < 0.50` for cloudy and `k_t > 0.90` for clear in 5 C temperature bins. Temperatures colder than `-15 C` use the `[-15, -10)` rules, and temperatures warmer than `20 C` use the `[15, 20)` rules. Treat these rules as a starting point and validate/retrain for different regions, seasons, land covers, or snow conditions.
 - Large monthly jobs can use substantial storage. Keep `BASE_DIR` on scratch or project storage rather than your home directory.
