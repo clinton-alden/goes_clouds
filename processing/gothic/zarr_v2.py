@@ -6,8 +6,8 @@ import calendar
 # Gothic test version
 
 # Check for command-line arguments
-if len(sys.argv) != 6:
-    print("Usage: python zarr_v2.py <directory> <year> <month> <goes_model> <domain>")
+if len(sys.argv) not in (6, 8):
+    print("Usage: python zarr_v2.py <directory> <year> <month> <goes_model> <domain> [start_day end_day]")
     sys.exit(1)
 
 # Parse command-line arguments
@@ -17,10 +17,12 @@ month = int(sys.argv[3])
 goes_model = sys.argv[4]
 domain = sys.argv[5]
 
-# Auto-assign start_date and end_date based on month
+# Default to the full month; optional bounds support isolated recovery retries.
 num_days = calendar.monthrange(year, month)[1]
-start_date = 1
-end_date = num_days
+start_date = int(sys.argv[6]) if len(sys.argv) == 8 else 1
+end_date = int(sys.argv[7]) if len(sys.argv) == 8 else num_days
+if not (1 <= start_date <= end_date <= num_days):
+    raise ValueError(f"Invalid day range {start_date}-{end_date} for {year}-{month:02d}")
 
 channel_list = ['C02', 'C05', 'C13']
 

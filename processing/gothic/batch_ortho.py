@@ -15,6 +15,16 @@ def _resolve_data_vars():
     return resolved if resolved else ["Rad"]
 
 
+def require_opentopography_api_key():
+    api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENTOPOGRAPHY_API_KEY is required for DEM downloads. "
+            "Create your own OpenTopography API key and export it before running ortho."
+        )
+    return api_key
+
+
 def _resolve_worker_count(requested_workers, data_vars):
     """Choose a safe worker count for the current data variables.
 
@@ -92,7 +102,12 @@ def process_single_file(args):
 
 def process_files(root_dir, domain, data_vars=None, max_workers=None):
     print('DOMAIN: ' + str(domain))
-    api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
+    configured_dem = os.environ.get("ORTHO_DEM_FILE", "").strip()
+    if configured_dem and not os.path.isfile(configured_dem):
+        raise FileNotFoundError(f"ORTHO_DEM_FILE does not exist: {configured_dem}")
+    api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY", "")
+    if not configured_dem:
+        api_key = require_opentopography_api_key()
     if data_vars is None:
         data_vars = ["Rad"]
     
@@ -112,7 +127,7 @@ def process_files(root_dir, domain, data_vars=None, max_workers=None):
     
     # Download DEM once with first file before parallel processing
     if nc_files:
-        dem_filepath = os.path.join(root_dir, "temp_SRTMGL3_DEM.tif")
+        dem_filepath = configured_dem or os.path.join(root_dir, "temp_SRTMGL3_DEM.tif")
         if not os.path.exists(dem_filepath):
             print(f"Preparing DEM cache: {dem_filepath}")
             orthorectify_modded.get_dem(

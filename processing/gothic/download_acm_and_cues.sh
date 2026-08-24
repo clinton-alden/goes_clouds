@@ -44,7 +44,7 @@ USAGE
 DOMAIN=${1:-${DOMAIN:-gothic}}
 GOES=${2:-${GOES:-goes16}}
 GOES_BASE_DIR=${3:-${GOES_BASE_DIR:-/glade/derecho/scratch/cdalden/${DOMAIN}}}
-RGB_COMPOSITE_DIR=${RGB_COMPOSITE_DIR:-/glade/u/home/cdalden/scratch/${DOMAIN}/goes16/rgb_composite}
+RGB_COMPOSITE_DIR=${RGB_COMPOSITE_DIR:-${GOES_BASE_DIR}/${GOES}/rgb_composite}
 CUES_SOURCE_PATH=${CUES_SOURCE_PATH:-/glade/u/home/cdalden/goes_work/analysis/CUES_1min_data_atmos_radiation_soiltemp_precip_2015to2025.nc}
 CUES_OUTPUT_DIR=${CUES_OUTPUT_DIR:-${GOES_BASE_DIR}/cues/${DOMAIN}}
 DOWNLOAD_SCRIPT=${DOWNLOAD_SCRIPT:-../../data_download/download-goes.py}
@@ -78,8 +78,8 @@ if [ "${DOMAIN}" = "cues" ]; then
   RGB_TOKEN_DOMAIN="mammoth"
 fi
 
-first_file=$(find "${RGB_COMPOSITE_DIR}" -maxdepth 1 -type f -name "goes16_*_rgb_${RGB_TOKEN_DOMAIN}_*.nc" | sort | head -n 1 || true)
-last_file=$(find "${RGB_COMPOSITE_DIR}" -maxdepth 1 -type f -name "goes16_*_rgb_${RGB_TOKEN_DOMAIN}_*.nc" | sort | tail -n 1 || true)
+first_file=$(find "${RGB_COMPOSITE_DIR}" -maxdepth 1 -type f -name "${GOES}_*_rgb_${RGB_TOKEN_DOMAIN}_*.nc" | sort | head -n 1 || true)
+last_file=$(find "${RGB_COMPOSITE_DIR}" -maxdepth 1 -type f -name "${GOES}_*_rgb_${RGB_TOKEN_DOMAIN}_*.nc" | sort | tail -n 1 || true)
 if [ -z "${first_file}" ] || [ -z "${last_file}" ]; then
   echo "ERROR: no RGB files found under ${RGB_COMPOSITE_DIR} for domain ${DOMAIN}"
   exit 2

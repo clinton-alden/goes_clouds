@@ -1,5 +1,11 @@
 # Using GOES to study orographic clouds and valley scale winds in the East River of Colorado
 
+## Public workflow
+
+For a shareable, step-by-step guide to create the `goes_downloading` environment, download GOES data, orthorectify, build Zarr/RGB files, download ERA5-Land temperature, and apply the RGB cloud mask, start here:
+
+[`goes_public_workflow/README.md`](goes_public_workflow/README.md)
+
 ### Steps to install goes_ortho
 1. create new env
 2. I could not install goes_ortho from Steven Pestana's github at first. The following 3 installs allowed me to successfully install goes_ortho via pip.

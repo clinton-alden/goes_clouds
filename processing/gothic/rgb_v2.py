@@ -20,8 +20,8 @@ def process_day(args):
         return f"ERROR {date}: {e}"
 
 def main():
-    if len(sys.argv) < 4:
-        print("Usage: python rgb_v2.py <in_dir> <year> <month> [domain] [goes]")
+    if len(sys.argv) not in (4, 5, 6, 8):
+        print("Usage: python rgb_v2.py <in_dir> <year> <month> [domain] [goes] [start_day end_day]")
         sys.exit(1)
 
     in_dir = sys.argv[1].rstrip("/") + "/"
@@ -30,9 +30,12 @@ def main():
     domain = sys.argv[4] if len(sys.argv) > 4 else "gothic"
     goes = sys.argv[5] if len(sys.argv) > 5 else "goes16"
 
-    # Auto-compute end of month
-    start_day = 1
-    end_day = calendar.monthrange(year, month)[1]
+    # Default to the full month; optional bounds support isolated recovery retries.
+    month_end = calendar.monthrange(year, month)[1]
+    start_day = int(sys.argv[6]) if len(sys.argv) == 8 else 1
+    end_day = int(sys.argv[7]) if len(sys.argv) == 8 else month_end
+    if not (1 <= start_day <= end_day <= month_end):
+        raise ValueError(f"Invalid day range {start_day}-{end_day} for {year}-{month:02d}")
 
     print(f"Processing {year}-{month:02d} ({start_day} → {end_day})")
     print(f"Input dir: {in_dir}")

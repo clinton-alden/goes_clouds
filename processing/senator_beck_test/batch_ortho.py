@@ -5,6 +5,16 @@ from multiprocessing import Pool, cpu_count
 
 # Senator Beck Basin test version - 50km x 50km domain
 
+def require_opentopography_api_key():
+    api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENTOPOGRAPHY_API_KEY is required for DEM downloads. "
+            "Create your own OpenTopography API key and export it before running ortho."
+        )
+    return api_key
+
+
 def process_single_file(args):
     """Process a single NetCDF file - worker function for multiprocessing"""
     netcdf_path, domain, api_key = args
@@ -60,7 +70,7 @@ def process_single_file(args):
 
 def process_files(root_dir, domain, max_workers=None):
     print('DOMAIN: ' + str(domain))
-    api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
+    api_key = require_opentopography_api_key()
     
     # Collect all .nc files first
     nc_files = []

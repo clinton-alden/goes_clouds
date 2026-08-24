@@ -13,6 +13,7 @@ EDITS
 """
 
 import hashlib
+import fcntl
 import logging
 import os
 
@@ -124,11 +125,18 @@ def make_ortho_map(goes_filepath, dem_filepath, out_filepath=None):
         dem = dem.isel(y=slice(None, None, -1))
         logging.info("...done")
     
-    # Downsample DEM to coarser grid (1/2 ABI resolution) for speed; will interpolate back later
-    # This reduces geodetic transforms from ~154k to ~40k, yielding ~10-12x speedup with minimal quality loss
+    # By default retain the historical compact grid. Large-domain production
+    # can request an explicit geographic grid spacing without changing legacy
+    # workflows (for example 0.003125 x 0.004166667 degrees).
     logging.info("\nDownsampling DEM to coarse grid for fast transformation...")
-    coarse_nx = max(160, len(abi_image.x) // 2)  # ~160-240 pixels
-    coarse_ny = max(120, len(abi_image.y) // 2)  # ~120-180 pixels
+    target_dx = os.environ.get("ORTHO_GRID_DX_DEG")
+    target_dy = os.environ.get("ORTHO_GRID_DY_DEG")
+    if target_dx and target_dy:
+        coarse_nx = max(2, int(round((float(dem.x.max()) - float(dem.x.min())) / float(target_dx))) + 1)
+        coarse_ny = max(2, int(round((float(dem.y.max()) - float(dem.y.min())) / float(target_dy))) + 1)
+    else:
+        coarse_nx = max(160, len(abi_image.x) // 2)
+        coarse_ny = max(120, len(abi_image.y) // 2)
     dem_downsampled = dem.interp(
         x=np.linspace(dem.x.min().values, dem.x.max().values, coarse_nx),
         y=np.linspace(dem.y.min().values, dem.y.max().values, coarse_ny)
@@ -310,8 +318,17 @@ def orthorectify_abi(goes_filepath, pixel_map, data_vars, out_filename=None):
         if np.any(valid_mask):
             valid_x = dem_x_flat[valid_mask]
             valid_y = dem_y_flat[valid_mask]
-            x_idx = np.abs(abi_x[:, None] - valid_x[None, :]).argmin(axis=0)
-            y_idx = np.abs(abi_y[:, None] - valid_y[None, :]).argmin(axis=0)
+            def nearest_indices(coordinates, targets):
+                order = np.argsort(coordinates)
+                sorted_coordinates = coordinates[order]
+                right = np.searchsorted(sorted_coordinates, targets, side="left")
+                right = np.clip(right, 0, len(sorted_coordinates) - 1)
+                left = np.clip(right - 1, 0, len(sorted_coordinates) - 1)
+                choose_left = np.abs(targets - sorted_coordinates[left]) <= np.abs(sorted_coordinates[right] - targets)
+                return order[np.where(choose_left, left, right)]
+
+            x_idx = nearest_indices(abi_x, valid_x)
+            y_idx = nearest_indices(abi_y, valid_y)
             abi_var_flat[valid_mask] = abi_image[var].values[y_idx, x_idx]
         
         # Reshape back to DEM grid shape
@@ -343,6 +360,20 @@ def orthorectify_abi(goes_filepath, pixel_map, data_vars, out_filename=None):
                     abi_image.planck_bc1.values,
                     abi_image.planck_bc2.values,
                 )
+
+    if os.environ.get("ORTHO_COMPACT_OUTPUT", "0") == "1":
+        calibrated = [name for name in ("ref", "tb") if name in pixel_map]
+        if not calibrated:
+            raise RuntimeError("Compact orthorectification produced no calibrated variable")
+        compact = pixel_map[calibrated].astype({name: "float32" for name in calibrated})
+        if out_filename is None:
+            out_filename = abi_image.dataset_name + "_ortho.nc"
+        compact.to_netcdf(
+            out_filename,
+            encoding={name: {"zlib": True, "complevel": 1, "dtype": "float32"} for name in calibrated},
+        )
+        abi_image.close()
+        return compact
 
     # Map (orthorectify) the original ABI Fixed Grid coordinate values to the new pixels for reference
     logging.info(
@@ -475,29 +506,68 @@ def ortho(
             proj="+proj=lonlat +ellps=GRS80",
         )  # make sure to convert to GRS80 ellipsoid model GOES ABI fixed grid uses
 
-    # Try to load cached map for this domain; compute if not found
-    # Try to load cached map for this domain; compute if not found
-    dem_hash = hashlib.md5(open(dem_filepath, 'rb').read(8192)).hexdigest()[:8]
-    goes_hash = hashlib.md5(open(goes_image_path, 'rb').read(8192)).hexdigest()[:8]
+    # Serialize creation of each shared map. Multiple month workers commonly
+    # need the same geometry and previously raced while writing this file,
+    # allowing another worker to open a partial NetCDF and fail with an HDF
+    # error. Load eagerly before releasing the lock so no lazy file handle is
+    # shared with later work.
+    grid_signature = (
+        f"{os.environ.get('ORTHO_GRID_DX_DEG', 'legacy')}:"
+        f"{os.environ.get('ORTHO_GRID_DY_DEG', 'legacy')}"
+    ).encode()
+    dem_hash = hashlib.md5(open(dem_filepath, 'rb').read(8192) + grid_signature).hexdigest()[:8]
+    # Scan timestamps and channel calibration differ between files, but the
+    # terrain-to-ABI-angle geometry is identical for a satellite projection.
+    # Keying on file bytes created one large map per scan. Key only on the
+    # projection constants so all channels and timestamps reuse one map.
+    with xr.open_dataset(goes_image_path, decode_times=False) as cache_source:
+        projection = cache_source.goes_imager_projection
+        projection_signature = ":".join(str(projection.attrs.get(name)) for name in (
+            "longitude_of_projection_origin", "perspective_point_height",
+            "semi_major_axis", "semi_minor_axis", "sweep_angle_axis",
+        )).encode()
+    goes_hash = hashlib.md5(projection_signature).hexdigest()[:8]
     cache_dir = os.path.expanduser('~/.ortho_cache')
     try:
         os.makedirs(cache_dir, exist_ok=True)
         cache_file = os.path.join(cache_dir, f'ortho_map_{dem_hash}_{goes_hash}.nc')
-        
-        if os.path.exists(cache_file):
-            logging.info(f"Loading cached ortho map from {cache_file}")
-            goes_ortho_map = xr.open_dataset(cache_file)
-        else:
-            logging.info(f"Computing new ortho map (will try to cache to {cache_file})")
-            goes_ortho_map = make_ortho_map(goes_image_path, dem_filepath)
+        lock_file = cache_file + ".lock"
+        with open(lock_file, "w", encoding="utf-8") as cache_lock:
+            fcntl.flock(cache_lock, fcntl.LOCK_EX)
             try:
-                goes_ortho_map.to_netcdf(cache_file)
-                logging.info(f"Cached ortho map to {cache_file}")
-            except (OSError, PermissionError) as e:
-                logging.warning(f"Could not write cache file: {e}, continuing without cache")
+                if os.path.exists(cache_file):
+                    logging.info(f"Loading cached ortho map from {cache_file}")
+                    try:
+                        goes_ortho_map = xr.load_dataset(cache_file)
+                    except (OSError, ValueError):
+                        logging.warning(f"Removing unreadable ortho cache {cache_file}")
+                        os.remove(cache_file)
+                        goes_ortho_map = None
+                else:
+                    goes_ortho_map = None
+
+                if goes_ortho_map is None:
+                    logging.info(f"Computing new ortho map (will cache to {cache_file})")
+                    goes_ortho_map = make_ortho_map(goes_image_path, dem_filepath).load()
+                    temp_cache = f"{cache_file}.{os.getpid()}.tmp"
+                    try:
+                        goes_ortho_map.to_netcdf(temp_cache)
+                        os.replace(temp_cache, cache_file)
+                        logging.info(f"Cached ortho map to {cache_file}")
+                    finally:
+                        if os.path.exists(temp_cache):
+                            os.remove(temp_cache)
+            finally:
+                fcntl.flock(cache_lock, fcntl.LOCK_UN)
     except (OSError, PermissionError) as e:
         logging.warning(f"Could not access cache directory: {e}, computing map without caching")
-        goes_ortho_map = make_ortho_map(goes_image_path, dem_filepath)
+        goes_ortho_map = make_ortho_map(goes_image_path, dem_filepath).load()
+
+    # The geometry map is reusable, but its timestamp is not. Cached maps may
+    # carry the time coordinate of the first file that created them, so always
+    # replace it with the current source file's coordinate before writing.
+    with xr.open_dataset(goes_image_path) as current_image:
+        goes_ortho_map = goes_ortho_map.assign_coords(t=current_image.t.values)
     
     # Apply the "ortho map" and save a new NetCDF file with data variables from the original file
     _ = orthorectify_abi(

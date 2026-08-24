@@ -9,8 +9,27 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import warnings
 import imageio
+import re
 
 warnings.filterwarnings("ignore")
+
+
+def _abi_scan_midpoint_from_filename(path):
+    """Return the ABI scan midpoint encoded by the `_s..._e...` filename."""
+    match = re.search(r'_s(\d{13,})_e(\d{13,})_', os.path.basename(path))
+    if not match:
+        raise ValueError(f"ABI scan timestamps not found in filename: {path}")
+
+    def parse_stamp(stamp):
+        base = datetime.strptime(stamp[:13], '%Y%j%H%M%S')
+        fraction = stamp[13:]
+        if fraction:
+            base += timedelta(seconds=int(fraction) / (10 ** len(fraction)))
+        return base
+
+    start = parse_stamp(match.group(1))
+    end = parse_stamp(match.group(2))
+    return np.datetime64(start + (end - start) / 2, 'ns')
 
 #########################################################################################
 # Processing to netcdfs to zarr files for each day
@@ -117,9 +136,26 @@ def goes_nc_to_zarr(in_dir, channels, startday, endday, month, year,
             for f in existing_nc_files:
                 try:
                     with xr.open_dataset(f) as ds_single:
+                        # Cached orthorectification maps in older runs retained
+                        # the timestamp of the file used to build the map.  The
+                        # ABI filename is authoritative and survives that bug.
+                        ds_single = ds_single.assign_coords(
+                            t=_abi_scan_midpoint_from_filename(f)
+                        )
                         if 't' not in ds_single.dims:
                             ds_single = ds_single.expand_dims('t')
                         ds_single = ds_single.drop_vars(['dem_px_angle_x', 'dem_px_angle_y'], errors='ignore')
+
+                        # Every source NetCDF uses its own scan time as the CF
+                        # reference epoch.  Appending those encodings directly
+                        # to one Zarr array corrupts all timestamps after the
+                        # first record because Zarr retains only the first
+                        # file's units.  Force one fixed epoch for every append.
+                        ds_single['t'].encoding = {
+                            'units': 'nanoseconds since 1970-01-01 00:00:00',
+                            'calendar': 'proleptic_gregorian',
+                            'dtype': 'int64',
+                        }
 
                         if not wrote_any:
                             ds_single.to_zarr(out_path, mode='w')
@@ -278,13 +314,28 @@ def goes_rad_to_rgb(path, date, goes, location):
     C13_file = f'C13/{goes}_C13_{location}_' + date + '.zarr'
     ds_C13 = xr.open_zarr(path+C13_file)
 
-    # Compute reflectance (ref) and brightness temperature (tb) from raw Rad
-    # ref = kappa0 * Rad  (kappa0 is per-timestep, broadcasts over y/x)
-    ds_C02 = ds_C02.assign(ref=ds_C02['kappa0'] * ds_C02['Rad'])
-    ds_C05 = ds_C05.assign(ref=ds_C05['kappa0'] * ds_C05['Rad'])
-    # tb via inverse Planck: T_eff = fk2 / ln(fk1/Rad + 1); T = (T_eff - bc1) / bc2
-    _T_eff = ds_C13['planck_fk2'] / np.log(ds_C13['planck_fk1'] / ds_C13['Rad'] + 1)
-    ds_C13 = ds_C13.assign(tb=(_T_eff - ds_C13['planck_bc1']) / ds_C13['planck_bc2'])
+    # Interrupted/retried daily assembly can leave repeated scans in a Zarr
+    # store. Xarray cannot reindex a non-unique time coordinate, and retaining
+    # one copy is lossless because repeated timestamps represent the same scan.
+    def unique_time(ds):
+        times = np.asarray(ds['t'].values)
+        _, first = np.unique(times, return_index=True)
+        return ds.isel(t=np.sort(first)).sortby('t')
+
+    ds_C02 = unique_time(ds_C02)
+    ds_C05 = unique_time(ds_C05)
+    ds_C13 = unique_time(ds_C13)
+
+    # Orthorectified files normally already contain calibrated reflectance and
+    # brightness temperature. Retain support for older raw-radiance Zarrs that
+    # include the calibration coefficients instead.
+    if 'ref' not in ds_C02:
+        ds_C02 = ds_C02.assign(ref=ds_C02['kappa0'] * ds_C02['Rad'])
+    if 'ref' not in ds_C05:
+        ds_C05 = ds_C05.assign(ref=ds_C05['kappa0'] * ds_C05['Rad'])
+    if 'tb' not in ds_C13:
+        _T_eff = ds_C13['planck_fk2'] / np.log(ds_C13['planck_fk1'] / ds_C13['Rad'] + 1)
+        ds_C13 = ds_C13.assign(tb=(_T_eff - ds_C13['planck_bc1']) / ds_C13['planck_bc2'])
 
     # convert to lat and lon from x and y coordinates
     # removed - Stevens code already does this

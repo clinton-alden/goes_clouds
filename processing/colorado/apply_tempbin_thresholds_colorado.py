@@ -190,12 +190,20 @@ def choose_bin(temp_c: np.ndarray, left_edges: np.ndarray, right_edges: np.ndarr
     return idx
 
 
-def select_target_hours(ds: xr.Dataset) -> xr.Dataset:
+def select_target_hours(
+    ds: xr.Dataset,
+    target_hours: set[int] | None = None,
+) -> xr.Dataset:
     times = pd.DatetimeIndex(pd.to_datetime(ds["t"].values))
-    hour_float = times.hour + times.minute / 60.0 + times.second / 3600.0
-    keep = (hour_float >= START_HOUR_UTC) & (hour_float < END_HOUR_UTC)
+    if target_hours is None:
+        hour_float = times.hour + times.minute / 60.0 + times.second / 3600.0
+        keep = (hour_float >= START_HOUR_UTC) & (hour_float < END_HOUR_UTC)
+        window_description = "14Z-00Z"
+    else:
+        keep = np.isin(times.hour, sorted(target_hours))
+        window_description = ",".join(f"{hour:02d}Z" for hour in sorted(target_hours))
     if not np.any(keep):
-        raise ValueError("No GOES timesteps found in the requested 14Z-00Z window")
+        raise ValueError(f"No GOES timesteps found in requested hours: {window_description}")
     return ds.isel(t=np.where(keep)[0])
 
 
@@ -245,12 +253,14 @@ def build_cloud_mask(
     era5_path: Path,
     threshold_csv: Path,
     mask_path: Path,
+    target_hours: set[int] | None = None,
+    include_diagnostics: bool = True,
 ) -> tuple[pd.DataFrame, pd.Series]:
     thresholds = load_thresholds(threshold_csv)
     t2m_field = load_era5_temp_field(era5_path)
 
     with xr.open_dataset(rgb_path) as ds:
-        ds = select_target_hours(ds)
+        ds = select_target_hours(ds, target_hours=target_hours)
         goes_times = pd.DatetimeIndex(pd.to_datetime(ds["t"].values))
         goes_lat = np.asarray(ds["latitude"].values, dtype=np.float64)
         goes_lon = np.asarray(ds["longitude"].values, dtype=np.float64)
@@ -283,44 +293,46 @@ def build_cloud_mask(
             )
             cloud_mask[sel] = apply_rule(c1, c2, c3, str(row["rule"])).astype(np.uint8)
 
-        out_ds = xr.Dataset(
-            data_vars={
-                "cloud_binary": (("t", "latitude", "longitude"), cloud_mask),
+        data_vars = {
+            "cloud_binary": (("t", "latitude", "longitude"), cloud_mask),
+        }
+        if include_diagnostics:
+            data_vars.update({
                 "air_temp_c": (("t", "latitude", "longitude"), temp_values.astype(np.float32)),
                 "air_temp_domain_mean_c": (
-                    ("t",),
-                    temp_values.mean(axis=(1, 2)).astype(np.float32),
+                    ("t",), temp_values.mean(axis=(1, 2)).astype(np.float32)
                 ),
                 "temp_bin_index": (("t", "latitude", "longitude"), bin_idx.astype(np.int16)),
-            },
+            })
+        out_ds = xr.Dataset(
+            data_vars=data_vars,
             coords={
                 "t": ds["t"],
                 "latitude": ds["latitude"],
                 "longitude": ds["longitude"],
             },
             attrs={
-                "title": "Colorado cloud mask from Gothic RGB temperature-bin thresholds",
+                "title": "Cloud mask from Gothic RGB temperature-bin thresholds",
                 "rgb_source": str(rgb_path),
                 "era5_land_source": str(era5_path),
                 "threshold_csv": str(threshold_csv),
             },
         )
         out_ds["cloud_binary"].attrs["long_name"] = "cloud mask (0=clear, 1=cloudy)"
-        out_ds["air_temp_c"].attrs["long_name"] = "ERA5-Land 2m air temperature interpolated to GOES grid"
-        out_ds["air_temp_c"].attrs["units"] = "degC"
-        out_ds["air_temp_domain_mean_c"].attrs["long_name"] = (
-            "domain-mean ERA5-Land 2m air temperature after interpolation to GOES grid"
-        )
-        out_ds["air_temp_domain_mean_c"].attrs["units"] = "degC"
-        out_ds["temp_bin_index"].attrs["long_name"] = (
-            "row index in threshold CSV used per pixel and timestep"
-        )
+        if include_diagnostics:
+            out_ds["air_temp_c"].attrs["long_name"] = "ERA5-Land 2m air temperature interpolated to GOES grid"
+            out_ds["air_temp_c"].attrs["units"] = "degC"
+            out_ds["air_temp_domain_mean_c"].attrs["long_name"] = (
+                "domain-mean ERA5-Land 2m air temperature after interpolation to GOES grid"
+            )
+            out_ds["air_temp_domain_mean_c"].attrs["units"] = "degC"
+            out_ds["temp_bin_index"].attrs["long_name"] = (
+                "row index in threshold CSV used per pixel and timestep"
+            )
 
         encoding = {
-            "cloud_binary": {"zlib": True, "complevel": 4, "dtype": "uint8"},
-            "air_temp_c": {"zlib": True, "complevel": 4, "dtype": "float32"},
-            "air_temp_domain_mean_c": {"zlib": True, "complevel": 4, "dtype": "float32"},
-            "temp_bin_index": {"zlib": True, "complevel": 4, "dtype": "int16"},
+            name: {"zlib": True, "complevel": 4, "dtype": str(out_ds[name].dtype)}
+            for name in data_vars
         }
         out_ds.to_netcdf(mask_path, encoding=encoding)
         out_ds.close()

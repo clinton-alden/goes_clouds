@@ -5,10 +5,20 @@ import orthorectify_modded
 # domain = input('What domain are you ortho-ing?    ')
 # domain = 'scripps'
 
+def require_opentopography_api_key():
+    api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENTOPOGRAPHY_API_KEY is required for DEM downloads. "
+            "Create your own OpenTopography API key and export it before running ortho."
+        )
+    return api_key
+
 ### VERY IMPORTANT ###
 # CHANGE THE BOUNDS
 def process_files(root_dir, domain):
     print('DOMAIN: ' + str(domain))
+    api_key = require_opentopography_api_key()
     # Loop through all subdirectories and files
     for subdir, _, files in os.walk(root_dir):
         for file in files:
@@ -34,7 +44,6 @@ def process_files(root_dir, domain):
                     bounds = (-121, 35, -118, 40)
                 elif domain == 'scripps':
                     bounds = (-118, 32.5, -117, 33.5)
-                api_key = "41d14aae7e761c0de3e8f99aa4fd24d9"
 
                 if goes_image_path.endswith('_ortho.nc'):
                     print(f"File {goes_image_path} already ortho'd, skipping.")
